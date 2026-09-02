@@ -57,11 +57,90 @@ body {
 .comment-area {
   flex: 1;
   min-height: 500px;
+  max-height: 500px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow-y: auto;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  margin: 0;
+  list-style: none;
+  scroll-behavior: smooth;
+}
+
+.comment-area li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.comment-item-icon-slot {
+  flex: 0 0 auto;
+  width: 2.2em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.comment-item-icon {
+  width: 1.2em;
+  height: 1.2em;
+  object-fit: contain;
+}
+
+.comment-item-name {
+  font-size: 0.65em;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-all;
 }
 
 .send-area {
   flex: 0 0 auto;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
   min-height: var(--send-area-height);
+  gap: 0.4rem;
+  padding: 0.5rem;
+}
+
+.comment-error {
+  margin: 0;
+  color: #d64545;
+  font-size: 0.85em;
+}
+
+.send-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.send-area textarea {
+  flex: 1;
+  resize: none;
+  font: inherit;
+  line-height: 1.4;
+  padding: 0.4rem;
+  border: 1px solid #d0d7d5;
+  border-radius: 8px;
+  box-sizing: border-box;
+  max-height: calc(1.4em * 4 + 0.8rem);
+  overflow-y: auto;
+}
+
+.send-area button {
+  flex: 0 0 auto;
+  font: inherit;
+  padding: 0.4rem 0.9rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-accent);
+  color: #fff;
+  cursor: pointer;
 }
 
 @media (max-width: 767px) {

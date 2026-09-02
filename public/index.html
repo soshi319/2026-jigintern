@@ -16,8 +16,14 @@
         </video>
       </div>
       <div class="side-panel">
-        <div id="comment-area" class="box comment-area">コメントの表示領域</div>
-        <div id="send-area" class="box send-area">コメント・アイテムの送信領域</div>
+        <ul id="comment-area" class="box comment-area"></ul>
+        <div id="send-area" class="box send-area">
+          <p id="comment-error" class="comment-error" hidden></p>
+          <div class="send-row">
+            <textarea id="comment-input" rows="1" placeholder="コメントを入力"></textarea>
+            <button id="comment-send" type="button">送信</button>
+          </div>
+        </div>
       </div>
     </div>
   </body>
