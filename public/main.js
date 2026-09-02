@@ -3,6 +3,7 @@ import Hls from "hls.js";
 const STREAM_URL = "https://intern-hls-server.tomaton.workers.dev/stream.m3u8";
 const COMMENT_STREAM_URL = "https://intern-comment-server.intern-comment-server.deno.net/events";
 const COMMENT_POST_URL = "https://intern-comment-server.intern-comment-server.deno.net/messages";
+const ITEMS_URL = "https://intern-comment-server.intern-comment-server.deno.net/items";
 
 function initPlayer() {
   const video = document.getElementById("player");
@@ -76,10 +77,54 @@ function initCommentStream() {
   };
 }
 
+function initItemList() {
+  const itemList = document.getElementById("item-list");
+  const toggleButton = document.getElementById("item-toggle-btn");
+  if (!itemList || !toggleButton) return;
+
+  let lastFetchTime = 0;
+
+  const loadItems = () => {
+    if (Date.now() - lastFetchTime < 20000) return;
+
+    fetch(ITEMS_URL)
+      .then((response) => response.json())
+      .then((data) => {
+        for (const item of data.items) {
+          if (itemList.querySelector(`[data-id="${item.id}"]`)) continue;
+
+          const itemBox = document.createElement("div");
+          itemBox.className = "item-box";
+
+          const icon = document.createElement("img");
+          icon.dataset.id = item.id;
+          icon.src = item.iconUrl;
+          icon.title = item.name;
+          icon.alt = item.name;
+          itemBox.appendChild(icon);
+
+          const name = document.createElement("span");
+          name.className = "item-name";
+          name.textContent = item.name;
+          itemBox.appendChild(name);
+
+          itemList.appendChild(itemBox);
+        }
+        lastFetchTime = Date.now();
+      });
+  };
+
+  toggleButton.addEventListener("click", () => {
+    itemList.hidden = !itemList.hidden;
+    if (!itemList.hidden) loadItems();
+  });
+}
+
 function initCommentSend() {
   const input = document.getElementById("comment-input");
   const button = document.getElementById("comment-send");
   const errorArea = document.getElementById("comment-error");
+  const itemList = document.getElementById("item-list");
   if (!input || !button || !errorArea) return;
 
   const showError = (message) => {
@@ -123,6 +168,7 @@ function initCommentSend() {
     });
     input.value = "";
     resizeInput();
+    if (itemList) itemList.hidden = true;
   };
 
   input.addEventListener("input", () => {
@@ -140,4 +186,5 @@ function initCommentSend() {
 
 initPlayer();
 initCommentStream();
+initItemList();
 initCommentSend();
