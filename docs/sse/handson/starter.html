@@ -48,7 +48,7 @@
 
   <script>
     // ⚠️ 講師が案内するサーバーの URL に書き換えてください（最後に / は付けない）
-    const SERVER_URL = "https://sse-chat.deno.dev";
+    const SERVER_URL = "https://sse-demo.takerucam.deno.net";
 
     const messages = document.getElementById("messages");
     const form = document.getElementById("form");
@@ -59,13 +59,18 @@
     // やること:
     //   1. new EventSource(`${SERVER_URL}/events`) で SSE の接続を作る
     //   2. onmessage でメッセージが届いたら addMessage(event.data) を呼ぶ
+    const eventSorce = new EventSource(`${SERVER_URL}/events`);
+
     //
     // ヒント:
     //   const eventSource = new EventSource(接続先のURL);
     //   eventSource.onmessage = (event) => { ... };  // event.data に本文が入っている
-
+    
     // ここにコードを書く ↓
-
+    
+    eventSorce.onmessage = (event) => {
+      addMessage(event.data);
+    };
 
 
     // 届いたメッセージを画面のリストに追加する（この関数はそのまま使ってOK）
@@ -90,7 +95,10 @@
 
       // ここにコードを書く ↓
 
-
+      await fetch(`${SERVER_URL}/send`, {
+        method: "POST",
+        body: input.value,
+      });
 
       input.value = "";
     });
