@@ -1,5 +1,6 @@
 :root {
   --send-area-height: 60px;
+  --send-area-reserve: 60px;
   --color-bg: #f0f7f4;
   --color-surface: #ffffff;
   --color-text: #4a5553;
@@ -107,6 +108,14 @@ body {
   padding: 0.5rem;
 }
 
+.selected-item-chip {
+  width: 1.6em;
+  height: 1.6em;
+  object-fit: contain;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
 .comment-error {
   margin: 0;
   color: #d64545;
@@ -152,6 +161,12 @@ body {
   height: 2em;
   object-fit: contain;
   cursor: pointer;
+  border-radius: 6px;
+}
+
+.item-box.selected img {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .item-box .item-name {
@@ -188,7 +203,7 @@ body {
 @media (max-width: 767px) {
   .layout {
     grid-template-columns: 1fr;
-    padding-bottom: calc(var(--send-area-height) + 2rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--send-area-reserve) + 2rem + env(safe-area-inset-bottom));
   }
 
   .send-area {

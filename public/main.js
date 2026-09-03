@@ -96,6 +96,8 @@ function initItemList() {
           const itemBox = document.createElement("div");
           itemBox.className = "item-box";
 
+          itemBox.dataset.id = item.id;
+
           const icon = document.createElement("img");
           icon.dataset.id = item.id;
           icon.src = item.iconUrl;
@@ -117,6 +119,15 @@ function initItemList() {
   toggleButton.addEventListener("click", () => {
     itemList.hidden = !itemList.hidden;
     if (!itemList.hidden) loadItems();
+  });
+
+  itemList.addEventListener("click", (event) => {
+    const box = event.target.closest(".item-box");
+    if (!box) return;
+
+    const alreadySelected = box.classList.contains("selected");
+    itemList.querySelectorAll(".item-box.selected").forEach((el) => el.classList.remove("selected"));
+    if (!alreadySelected) box.classList.add("selected");
   });
 }
 
@@ -151,8 +162,11 @@ function initCommentSend() {
 
   const send = () => {
     const text = input.value;
-    if (!text.trim()) {
-      showError("コメントを入力してください。");
+    const selectedBox = itemList ? itemList.querySelector(".item-box.selected") : null;
+    const itemId = selectedBox ? selectedBox.dataset.id : null;
+
+    if (!text.trim() && !itemId) {
+      showError("コメントまたはアイテムを入力・選択してください。");
       return;
     }
     if (text.length > 200 || text.split("\n").length > 4) {
@@ -161,14 +175,35 @@ function initCommentSend() {
     }
 
     clearError();
+    const payload = {};
+    if (text.trim()) payload.text = text;
+    if (itemId) payload.itemId = itemId;
+
+    input.disabled = true;
+    button.disabled = true;
+    button.textContent = "送信中...";
+
     fetch(COMMENT_POST_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    input.value = "";
-    resizeInput();
-    if (itemList) itemList.hidden = true;
+      body: JSON.stringify(payload),
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("send failed");
+        input.value = "";
+        resizeInput();
+        if (selectedBox) selectedBox.classList.remove("selected");
+        if (itemList) itemList.hidden = true;
+      })
+      .catch(() => {
+        showError("送信に失敗しました。もう一度お試しください。");
+      })
+      .finally(() => {
+        input.disabled = false;
+        button.disabled = false;
+        button.textContent = "送信";
+        input.focus();
+      });
   };
 
   input.addEventListener("input", () => {
@@ -184,7 +219,52 @@ function initCommentSend() {
   button.addEventListener("click", send);
 }
 
+function initSelectedItemChip() {
+  const itemList = document.getElementById("item-list");
+  const chip = document.getElementById("selected-item-chip");
+  if (!itemList || !chip) return;
+
+  const update = () => {
+    const selectedBox = itemList.querySelector(".item-box.selected");
+    if (selectedBox && itemList.hidden) {
+      const icon = selectedBox.querySelector("img");
+      chip.src = icon.src;
+      chip.title = `${icon.title}(クリックで解除)`;
+      chip.hidden = false;
+    } else {
+      chip.hidden = true;
+    }
+  };
+
+  new MutationObserver(update).observe(itemList, {
+    attributes: true,
+    attributeFilter: ["class", "hidden"],
+    subtree: true,
+  });
+
+  chip.addEventListener("click", () => {
+    const selectedBox = itemList.querySelector(".item-box.selected");
+    if (selectedBox) selectedBox.classList.remove("selected");
+  });
+
+  update();
+}
+
+function initSendAreaHeight() {
+  const sendArea = document.getElementById("send-area");
+  if (!sendArea) return;
+
+  const updateHeight = () => {
+    document.documentElement.style.setProperty("--send-area-reserve", `${sendArea.offsetHeight}px`);
+  };
+
+  new ResizeObserver(updateHeight).observe(sendArea);
+  updateHeight();
+}
+
 initPlayer();
 initCommentStream();
 initItemList();
 initCommentSend();
+initSelectedItemChip();
+initSendAreaHeight();
