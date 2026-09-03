@@ -3,31 +3,105 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f2f2f0" />
     <title>視聴画面</title>
     <link rel="stylesheet" href="/styles.css" />
     <script type="module" src="/main.js"></script>
   </head>
   <body>
+    <a class="skip-link" href="#main-content">メインコンテンツへスキップ</a>
     <h1>視聴画面</h1>
-    <div class="layout">
+    <main id="main-content" class="layout">
       <div id="video-area" class="box video-area">
         <video id="player" controls playsinline>
           お使いのブラウザは動画再生に対応していません。
         </video>
       </div>
       <div class="side-panel">
-        <ul id="comment-area" class="box comment-area"></ul>
-        <div id="send-area" class="box send-area">
-          <img id="selected-item-chip" class="selected-item-chip" alt="選択中のアイテム" hidden />
-          <p id="comment-error" class="comment-error" hidden></p>
-          <div id="item-list" hidden></div>
-          <div class="send-row">
-            <button id="item-toggle-btn" type="button">🎁</button>
-            <textarea id="comment-input" rows="1" placeholder="コメントを入力"></textarea>
-            <button id="comment-send" type="button">送信</button>
+        <div id="comment-panel" class="box comment-panel">
+          <div id="comment-header" class="comment-header">
+            <button id="comment-toggle-btn" type="button" aria-expanded="true">
+              <span class="comment-toggle-arrow" aria-hidden="true"></span>
+              コメント
+            </button>
+            <div id="item-ticker" class="item-ticker"></div>
+            <span id="comment-unread-badge" class="comment-unread-badge" hidden>0</span>
+          </div>
+          <div id="comment-scroll-wrap" class="comment-scroll-wrap">
+            <ul id="comment-area" class="comment-area"></ul>
+            <button id="comment-jump-btn" class="comment-jump-btn" type="button" hidden>↓ 最新に戻る</button>
+          </div>
+          <div id="send-area" class="send-area">
+            <button id="selected-item-chip" class="selected-item-chip" type="button" aria-label="選択中のアイテム" hidden>
+              <img id="selected-item-chip-icon" alt="" />
+              <span class="selected-item-chip-remove" aria-hidden="true">×</span>
+            </button>
+            <p id="comment-error" class="comment-error" role="alert" aria-live="polite" tabindex="-1" hidden></p>
+            <div class="send-row">
+              <button id="item-toggle-btn" type="button" aria-label="アイテムを選択">
+                <svg class="row-icon" viewBox="0 0 512 512" width="18" height="18" aria-hidden="true">
+                  <path
+                    class="row-icon-fill"
+                    d="M128.778,31.389c-3.118,0-5.943,1.667-7.465,4.421L95.432,83.074c-1.302,2.318-1.377,5.076-0.29,7.54
+                    c1.162,2.463,3.264,4.205,5.947,4.785l126.422,27.4v-1.812v-1.958v-0.506v-2.392c0.071-0.797,0.146-1.452,0.216-2.178
+                    L134.29,33.417C132.768,32.111,130.806,31.389,128.778,31.389z"
+                  />
+                  <path
+                    class="row-icon-fill"
+                    d="M235.122,102.138c0.506-0.436,1.016-0.726,1.596-1.087c0.436-0.216,0.871-0.435,1.303-0.651
+                    c0.51-0.29,1.09-0.51,1.67-0.726l-0.655-3.189L220.118,6.739C219.318,2.828,215.842,0,211.853,0c-1.738,0-3.48,0.581-4.857,1.593
+                    L174.591,24.43c-2.028,1.447-3.334,3.695-3.55,6.088c-0.29,2.463,0.581,4.93,2.248,6.669l59.585,62.558L235.122,102.138z"
+                  />
+                  <path
+                    class="row-icon-fill"
+                    d="M284.488,119.029v1.958v1.812l126.423-27.4c2.609-0.58,4.786-2.322,5.872-4.785
+                    c1.161-2.464,1.087-5.222-0.216-7.54L390.615,35.81c-1.451-2.754-4.35-4.421-7.469-4.421c-2.028,0-3.985,0.722-5.507,2.028
+                    l-93.367,80.536c0.071,0.726,0.146,1.381,0.216,2.178v2.392V119.029z"
+                  />
+                  <path
+                    class="row-icon-fill"
+                    d="M305.003,1.593C303.552,0.581,301.885,0,300.147,0c-3.989,0-7.539,2.828-8.339,6.739l-18.919,89.746
+                    l-0.651,3.189c0.581,0.216,1.161,0.435,1.738,0.726c0.436,0.216,0.871,0.435,1.306,0.651c0.581,0.362,1.086,0.651,1.597,1.087
+                    l2.244-2.393l59.518-62.558c1.738-1.738,2.538-4.206,2.318-6.669c-0.219-2.393-1.522-4.641-3.554-6.088L305.003,1.593z"
+                  />
+                  <path
+                    class="row-icon-fill"
+                    d="M448.318,129.032h-163.83h-3.625h-3.624v-4.711v-1.813v-0.145v-2.393v-3.044c0-4.06-2.174-7.61-5.508-9.497
+                    c-0.29-0.216-0.654-0.435-1.015-0.506c-1.378-0.651-2.899-1.015-4.496-1.015h-20.441c-1.667,0-3.189,0.364-4.566,1.015
+                    c-0.365,0.146-0.726,0.29-1.016,0.506c-3.264,1.958-5.437,5.437-5.437,9.497v3.118v2.318v0.145v1.887v4.637h-3.625h-3.625h-163.9
+                    c-12.686,0-22.908,10.293-22.908,22.978v67.344c0,12.686,10.222,22.909,22.908,22.909h4.276v236.755
+                    c0,18.194,14.859,32.982,33.056,32.982h310.113c18.198,0,32.982-14.788,32.982-32.982V242.263h4.279
+                    c12.686,0,22.979-10.222,22.979-22.909V152.01C471.297,139.325,461.003,129.032,448.318,129.032z M236.279,361.437L236.279,361.437
+                    h0.003l0,0h39.151h0.121l0,0h0.145v-39.424h-39.417v-0.01H89.634v-79.739h146.344h0.304v79.11l-0.003,0.485h0.003v0.145h39.169
+                    h0.121l0,0h0.145v-79.739H421.99h0.301v79.739H275.717v39.434H421.99h0.301v117.582c0,6.233-4.998,11.234-11.235,11.234H275.717
+                    V361.437h-39.434v128.175l-0.003,0.641H100.943c-6.233,0-11.309-5.002-11.309-11.234V361.437h146.198H236.279z M62.45,152.01
+                    c0-0.651,0.506-1.231,1.161-1.231h172.671h39.434h172.601c0.726,0,1.232,0.58,1.232,1.231v67.344c0,0.655-0.506,1.162-1.232,1.162
+                    h-4.279H275.717h-39.434H67.887h-4.276c-0.654,0-1.161-0.506-1.161-1.162V152.01z"
+                  />
+                </svg>
+              </button>
+              <textarea id="comment-input" rows="1" placeholder="コメントを入力" aria-label="コメント入力"></textarea>
+              <button id="comment-send" type="button" aria-label="送信">
+                <svg class="send-icon" viewBox="0 0 512 512" width="18" height="18" aria-hidden="true">
+                  <path
+                    class="row-icon-fill"
+                    d="M474.444,19.857a20.336,20.336,0,0,0-21.592-2.781L33.737,213.8v38.066l176.037,70.414L322.69,496h38.074l120.3-455.4A20.342,20.342,0,0,0,474.444,19.857ZM337.257,459.693,240.2,310.37,389.553,146.788l-23.631-21.576L215.4,290.069,70.257,232.012,443.7,56.72Z"
+                  />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
+
+        <div id="item-panel" class="item-panel" hidden>
+          <div class="item-panel-header">
+            <h2>アイテム一覧</h2>
+            <button id="item-panel-close-btn" type="button" class="item-panel-close-btn" aria-label="閉じる">×</button>
+          </div>
+          <div id="item-group-tabs" class="item-group-tabs"></div>
+          <div id="item-list"></div>
+        </div>
       </div>
-    </div>
+    </main>
   </body>
 </html>
