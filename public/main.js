@@ -854,6 +854,12 @@ function initGlobalShortcuts() {
     const combo = comboFromEvent(event);
     const shortcut = GLOBAL_SHORTCUTS.find((candidate) => SHORTCUT_ASSIGNMENTS[candidate.id] === combo);
     if (!shortcut) return;
+    // This is the suppression the panel promises on rows whose Combo carries
+    // neither Alt nor Ctrl: those type a character, so firing mid-sentence
+    // would swallow the keystroke as well as trigger an unrelated action.
+    // Alt-bearing Combos stay live while typing on purpose — pausing the
+    // stream without leaving the comment box is the point of the feature.
+    if (comboTypesCharacter(combo) && isTypingTarget(event.target)) return;
     event.preventDefault();
     GLOBAL_SHORTCUT_ACTIONS[shortcut.id]?.();
   });
