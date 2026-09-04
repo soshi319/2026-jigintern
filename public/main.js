@@ -127,10 +127,14 @@ function initPlayer() {
   initPlayerKeyboardShortcuts(video, playFromLive);
 
   // Switches to a different channel's playlist on the same <video>/hls.js
-  // instance, rather than tearing down and re-running initPlayer — keeps
-  // volume, fullscreen, PiP, etc. untouched across the switch. Playback only
-  // resumes automatically if it was already playing (a deliberate channel
-  // change while watching, not the page's own autoplay-on-load).
+  // instance, rather than tearing down and re-running initPlayer — so volume
+  // and the control bar's own state carry over. Picture-in-picture may not:
+  // the non-hls branch calls video.load(), which resets the media element, and
+  // hls.loadSource rebuilds the MediaSource behind it. The button follows
+  // whatever happens either way, because initPictureInPicture listens for
+  // leavepictureinpicture on the element rather than tracking its own flag.
+  // Playback only resumes automatically if it was already playing (a deliberate
+  // channel change while watching, not the page's own autoplay-on-load).
   const switchChannel = (url) => {
     const wasPlaying = !video.paused;
     if (hls) {
@@ -231,6 +235,10 @@ function initFullscreenControl() {
     if (document.fullscreenElement) {
       document.exitFullscreen();
     } else {
+      // The mirror of the check in initPictureInPicture: whichever of the two
+      // is asked for last wins, because holding both means a fullscreen
+      // placeholder on screen while the picture plays in a floating window.
+      if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
       // Fullscreening the container (not the bare <video>) keeps this whole
       // custom control bar — and the live badge, PiP button, etc. — usable
       // while fullscreen, instead of handing the OS a raw video surface.
@@ -453,6 +461,10 @@ const GLOBAL_SHORTCUTS = [
   { id: "focusComment", label: "コメント入力欄にフォーカス", defaultCombo: "Alt+KeyT" },
   { id: "toggleItems", label: "アイテムパネルの開閉", defaultCombo: "Alt+KeyI" },
   { id: "fullscreen", label: "全画面表示の切り替え", defaultCombo: "Alt+KeyF" },
+  // Alt+P appears in no browser's accelerator table (unlike Alt+D and Alt+F,
+  // which we cancel). The row simply won't do anything on a browser without
+  // picture-in-picture, the same as the hidden button it delegates to.
+  { id: "pictureInPicture", label: "ピクチャーインピクチャー", defaultCombo: "Alt+KeyP" },
   { id: "mute", label: "ミュート切り替え", defaultCombo: "Alt+KeyM" },
   { id: "theme", label: "ダークモード切り替え", defaultCombo: "Alt+KeyD" },
   { id: "readAloud", label: "コメント読み上げの ON / OFF", defaultCombo: "Alt+KeyR" },
@@ -467,6 +479,7 @@ const GLOBAL_SHORTCUT_ACTIONS = {
   focusComment: () => document.getElementById("comment-input")?.focus(),
   toggleItems: () => document.getElementById("item-toggle-btn")?.click(),
   fullscreen: () => document.getElementById("video-fullscreen-btn")?.click(),
+  pictureInPicture: () => document.getElementById("video-pip-btn")?.click(),
   mute: () => document.getElementById("video-mute-btn")?.click(),
   theme: () => document.getElementById("theme-toggle-btn")?.click(),
   readAloud: () => document.getElementById("comment-speech-btn")?.click(),
@@ -896,16 +909,45 @@ function initPictureInPicture(video) {
   }
   btn.hidden = false;
 
+  // Guards against a second click landing between the state read below and the
+  // await settling: both would see "not in PiP yet" and fire two requests, and
+  // the loser's rejection would be indistinguishable from a real failure.
+  let pending = false;
+
+  // Cleared on a timer, not on animationend: under prefers-reduced-motion the
+  // shake is replaced by a colour change with no animation at all, so
+  // animationend would never fire and the failed state would stick for good.
+  let failureTimer = null;
+  const reportFailure = () => {
+    clearTimeout(failureTimer);
+    btn.classList.remove("is-failed");
+    // Forces a reflow so re-adding the class restarts the animation, the same
+    // trick flashPanel uses for a repeated comment flash.
+    void btn.offsetWidth;
+    btn.classList.add("is-failed");
+    failureTimer = setTimeout(() => btn.classList.remove("is-failed"), 600);
+  };
+
   btn.addEventListener("click", async () => {
+    if (pending) return;
+    pending = true;
     try {
       if (document.pictureInPictureElement === video) {
         await document.exitPictureInPicture();
       } else {
+        // Fullscreen and PiP are competing answers to "where should this play",
+        // and holding both leaves a fullscreen placeholder on screen while the
+        // picture is in a small floating window. Leaving fullscreen first is
+        // what the newer intent implies.
+        if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
         await video.requestPictureInPicture();
       }
     } catch {
-      // Rejected (e.g. video not ready yet) — nothing to recover from, the
-      // button just stays in its current state for the viewer to retry.
+      // Rejected — most often no video track yet, or the user gesture already
+      // spent. Silence here read as a dead button, so say something.
+      reportFailure();
+    } finally {
+      pending = false;
     }
   });
 
@@ -1701,6 +1743,12 @@ function initSelectedItemPreview() {
   update();
 }
 
+// "auto" means instant, not cancelled: someone who has asked for reduced
+// motion still needs to arrive, they just don't want to watch the travel.
+function scrollBehavior() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
 function initChannelList(switchChannel) {
   const listEl = document.getElementById("channel-list");
   const tabsEl = document.getElementById("channel-tabs");
@@ -1785,6 +1833,10 @@ function initChannelList(switchChannel) {
         btn.appendChild(title);
 
         btn.addEventListener("click", () => {
+          // Picking a channel means "watch this", and the channel panel sits
+          // below the fold — so go back to the top of the page, even when the
+          // channel is the one already playing and there's nothing to switch to.
+          window.scrollTo({ top: 0, behavior: scrollBehavior() });
           if (channel.id === activeId) return;
           activeId = channel.id;
           applyActiveChannel();
@@ -1805,7 +1857,7 @@ function initChannelList(switchChannel) {
         selectCategory(active.category);
         tabsEl.querySelector(".channel-tab.active")?.focus({ preventScroll: true });
         document.getElementById("channel-panel")?.scrollIntoView({
-          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+          behavior: scrollBehavior(),
           block: "nearest",
         });
       });

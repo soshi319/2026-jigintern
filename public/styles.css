@@ -383,9 +383,44 @@ button {
   transition: background-color 0.15s ease;
 }
 
-.video-bar-btn:hover,
-.video-bar-btn.active {
+.video-bar-btn:hover {
   background: rgba(255, 255, 255, 0.18);
+}
+
+/* Deliberately no longer sharing a declaration with :hover. They used to,
+   which meant an inactive button under the pointer looked exactly like an
+   active one — and you are always pointing at the button you are about to
+   press, so the state was unreadable at the moment it mattered most. */
+.video-bar-btn.active {
+  color: var(--color-accent);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Nothing else reports a failed picture-in-picture request: the promise
+   rejects (no user gesture left, no video track yet) and the control bar has
+   no error surface to write to. A short nudge is the feedback. */
+.video-bar-btn.is-failed {
+  animation: bar-btn-shake 0.3s ease-in-out;
+}
+
+@keyframes bar-btn-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-bar-btn.is-failed {
+    animation: none;
+    color: var(--color-error);
+  }
 }
 
 .video-bar-btn[hidden] {
@@ -396,8 +431,17 @@ button {
    a time, flipped by a state class set from JS (play/pause, mute, fullscreen). */
 .video-bar-btn .icon-pause,
 .video-bar-btn .icon-muted,
+.video-bar-btn .icon-exit-pip,
 .video-bar-btn .icon-exit-fullscreen {
   display: none;
+}
+
+#video-pip-btn.active .icon-enter-pip {
+  display: none;
+}
+
+#video-pip-btn.active .icon-exit-pip {
+  display: block;
 }
 
 #video-playpause-btn.is-playing .icon-play {

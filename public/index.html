@@ -71,7 +71,7 @@
     <main id="main-content" class="layout">
       <div class="video-column">
         <div id="video-area" class="box video-area" tabindex="0">
-          <video id="player" playsinline autopictureinpicture>
+          <video id="player" playsinline>
             お使いのブラウザは動画再生に対応していません。
           </video>
           <button id="video-play-overlay" type="button" class="video-play-overlay" aria-label="再生">
@@ -143,9 +143,20 @@
               aria-label="ピクチャーインピクチャーで再生"
               hidden
             >
-              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <svg class="bar-icon icon-enter-pip" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                 <rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
                 <rect x="12" y="11" width="8" height="6" rx="1" fill="currentColor" />
+              </svg>
+              <svg class="bar-icon icon-exit-pip" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
+                <path
+                  d="M18 16.5l-4-4m0 0h3m-3 0v3"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             </button>
 
