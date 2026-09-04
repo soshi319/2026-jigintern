@@ -117,6 +117,7 @@ function initPlayer() {
     video.play().catch(() => {});
   };
 
+  initVideoAspect(video);
   initBufferingIndicator(video);
   initPictureInPicture(video);
   initPlayPauseControl(video, playFromLive);
@@ -126,10 +127,14 @@ function initPlayer() {
   initPlayerKeyboardShortcuts(video, playFromLive);
 
   // Switches to a different channel's playlist on the same <video>/hls.js
-  // instance, rather than tearing down and re-running initPlayer — keeps
-  // volume, fullscreen, PiP, etc. untouched across the switch. Playback only
-  // resumes automatically if it was already playing (a deliberate channel
-  // change while watching, not the page's own autoplay-on-load).
+  // instance, rather than tearing down and re-running initPlayer — so volume
+  // and the control bar's own state carry over. Picture-in-picture may not:
+  // the non-hls branch calls video.load(), which resets the media element, and
+  // hls.loadSource rebuilds the MediaSource behind it. The button follows
+  // whatever happens either way, because initPictureInPicture listens for
+  // leavepictureinpicture on the element rather than tracking its own flag.
+  // Playback only resumes automatically if it was already playing (a deliberate
+  // channel change while watching, not the page's own autoplay-on-load).
   const switchChannel = (url) => {
     const wasPlaying = !video.paused;
     if (hls) {
@@ -145,6 +150,25 @@ function initPlayer() {
   };
 
   return switchChannel;
+}
+
+// The channels are Blender's open films, which are not all 16:9 — Sintel and
+// Tears of Steel are cinemascope. Publishing the stream's real ratio as
+// --video-aspect keeps .video-area, --mobile-panel-height and initLayoutFit
+// all working off one number instead of three copies of 16/9.
+function initVideoAspect(video) {
+  const publish = () => {
+    if (!video.videoWidth || !video.videoHeight) return;
+    document.documentElement.style.setProperty("--video-aspect", String(video.videoWidth / video.videoHeight));
+  };
+
+  // "resize" is the event for a change in the video's own intrinsic size, so
+  // it covers a channel switch as well as the first metadata. loadedmetadata
+  // is kept alongside it because it is the more reliably fired of the two on
+  // the initial load.
+  video.addEventListener("loadedmetadata", publish);
+  video.addEventListener("resize", publish);
+  publish();
 }
 
 function initPlayPauseControl(video, playFromLive) {
@@ -211,6 +235,10 @@ function initFullscreenControl() {
     if (document.fullscreenElement) {
       document.exitFullscreen();
     } else {
+      // The mirror of the check in initPictureInPicture: whichever of the two
+      // is asked for last wins, because holding both means a fullscreen
+      // placeholder on screen while the picture plays in a floating window.
+      if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
       // Fullscreening the container (not the bare <video>) keeps this whole
       // custom control bar — and the live badge, PiP button, etc. — usable
       // while fullscreen, instead of handing the OS a raw video surface.
@@ -433,6 +461,10 @@ const GLOBAL_SHORTCUTS = [
   { id: "focusComment", label: "コメント入力欄にフォーカス", defaultCombo: "Alt+KeyT" },
   { id: "toggleItems", label: "アイテムパネルの開閉", defaultCombo: "Alt+KeyI" },
   { id: "fullscreen", label: "全画面表示の切り替え", defaultCombo: "Alt+KeyF" },
+  // Alt+P appears in no browser's accelerator table (unlike Alt+D and Alt+F,
+  // which we cancel). The row simply won't do anything on a browser without
+  // picture-in-picture, the same as the hidden button it delegates to.
+  { id: "pictureInPicture", label: "ピクチャーインピクチャー", defaultCombo: "Alt+KeyP" },
   { id: "mute", label: "ミュート切り替え", defaultCombo: "Alt+KeyM" },
   { id: "theme", label: "ダークモード切り替え", defaultCombo: "Alt+KeyD" },
   { id: "readAloud", label: "コメント読み上げの ON / OFF", defaultCombo: "Alt+KeyR" },
@@ -447,6 +479,7 @@ const GLOBAL_SHORTCUT_ACTIONS = {
   focusComment: () => document.getElementById("comment-input")?.focus(),
   toggleItems: () => document.getElementById("item-toggle-btn")?.click(),
   fullscreen: () => document.getElementById("video-fullscreen-btn")?.click(),
+  pictureInPicture: () => document.getElementById("video-pip-btn")?.click(),
   mute: () => document.getElementById("video-mute-btn")?.click(),
   theme: () => document.getElementById("theme-toggle-btn")?.click(),
   readAloud: () => document.getElementById("comment-speech-btn")?.click(),
@@ -854,6 +887,12 @@ function initGlobalShortcuts() {
     const combo = comboFromEvent(event);
     const shortcut = GLOBAL_SHORTCUTS.find((candidate) => SHORTCUT_ASSIGNMENTS[candidate.id] === combo);
     if (!shortcut) return;
+    // This is the suppression the panel promises on rows whose Combo carries
+    // neither Alt nor Ctrl: those type a character, so firing mid-sentence
+    // would swallow the keystroke as well as trigger an unrelated action.
+    // Alt-bearing Combos stay live while typing on purpose — pausing the
+    // stream without leaving the comment box is the point of the feature.
+    if (comboTypesCharacter(combo) && isTypingTarget(event.target)) return;
     event.preventDefault();
     GLOBAL_SHORTCUT_ACTIONS[shortcut.id]?.();
   });
@@ -870,16 +909,45 @@ function initPictureInPicture(video) {
   }
   btn.hidden = false;
 
+  // Guards against a second click landing between the state read below and the
+  // await settling: both would see "not in PiP yet" and fire two requests, and
+  // the loser's rejection would be indistinguishable from a real failure.
+  let pending = false;
+
+  // Cleared on a timer, not on animationend: under prefers-reduced-motion the
+  // shake is replaced by a colour change with no animation at all, so
+  // animationend would never fire and the failed state would stick for good.
+  let failureTimer = null;
+  const reportFailure = () => {
+    clearTimeout(failureTimer);
+    btn.classList.remove("is-failed");
+    // Forces a reflow so re-adding the class restarts the animation, the same
+    // trick flashPanel uses for a repeated comment flash.
+    void btn.offsetWidth;
+    btn.classList.add("is-failed");
+    failureTimer = setTimeout(() => btn.classList.remove("is-failed"), 600);
+  };
+
   btn.addEventListener("click", async () => {
+    if (pending) return;
+    pending = true;
     try {
       if (document.pictureInPictureElement === video) {
         await document.exitPictureInPicture();
       } else {
+        // Fullscreen and PiP are competing answers to "where should this play",
+        // and holding both leaves a fullscreen placeholder on screen while the
+        // picture is in a small floating window. Leaving fullscreen first is
+        // what the newer intent implies.
+        if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
         await video.requestPictureInPicture();
       }
     } catch {
-      // Rejected (e.g. video not ready yet) — nothing to recover from, the
-      // button just stays in its current state for the viewer to retry.
+      // Rejected — most often no video track yet, or the user gesture already
+      // spent. Silence here read as a dead button, so say something.
+      reportFailure();
+    } finally {
+      pending = false;
     }
   });
 
@@ -923,6 +991,96 @@ const SPEECH_MAX_QUEUE = 3;
 // Comments run to 200 characters, which is roughly 20 seconds of Japanese
 // speech — long enough that one comment alone would fill the queue behind it.
 const SPEECH_MAX_CHARS = 50;
+
+// One entry per Cost Tier, cheapest first — synthesised rather than shipped as
+// audio files, so there's no asset to load, no licence to track, and the sound
+// can follow the tier table instead of being pinned to a fixed set of clips.
+// A 10-cost Item is a single short blip; a 1000-cost one is a four-note
+// arpeggio climbing higher and ringing longer, so what arrived is audible
+// without looking at the feed.
+const ITEM_SOUNDS = [
+  { notes: [659], duration: 0.12 },
+  { notes: [740, 988], duration: 0.16 },
+  { notes: [784, 1047], duration: 0.2 },
+  { notes: [880, 1175, 1397], duration: 0.26 },
+  { notes: [988, 1319, 1568, 1976], duration: 0.34 },
+];
+const ITEM_SOUND_STAGGER = 0.05;
+const ITEM_SOUND_PEAK = 0.16;
+
+// Returns the function initCommentStream calls for each item arrival, or null
+// when the browser has no Web Audio (the button is hidden rather than left as
+// a control that does nothing).
+function initItemSound() {
+  const button = document.getElementById("comment-sound-btn");
+  if (!button) return null;
+
+  const AudioCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtor) {
+    button.hidden = true;
+    return null;
+  }
+
+  // On by default, unlike the read-aloud toggle beside it. A short chime per
+  // item is the kind of ambient feedback a viewer expects from a stream; a
+  // synthesised voice reading every comment out loud is not.
+  let enabled = true;
+  let context = null;
+
+  // Autoplay policy: a context built before the viewer has interacted with the
+  // page starts suspended, and every note played into it is silently dropped.
+  // Since this defaults to on there's no toggle click to hang that on, so the
+  // context is created on the first gesture of any kind instead — and this
+  // page needs one to start the video regardless (autoplay is off by design).
+  const unlockAudio = () => {
+    context ??= new AudioCtor();
+    context.resume().catch(() => {});
+  };
+  document.addEventListener("pointerdown", unlockAudio, { once: true });
+  document.addEventListener("keydown", unlockAudio, { once: true });
+
+  const sync = () => {
+    button.classList.toggle("is-on", enabled);
+    button.setAttribute("aria-pressed", String(enabled));
+    button.setAttribute("aria-label", enabled ? "アイテムの効果音を止める" : "アイテムの効果音を鳴らす");
+  };
+
+  button.addEventListener("click", () => {
+    enabled = !enabled;
+    if (enabled) unlockAudio();
+    sync();
+  });
+
+  sync();
+
+  return (cost) => {
+    if (!enabled || !context) return;
+
+    const tierIndex = COST_TIERS.indexOf(tierForCost(cost));
+    const sound = ITEM_SOUNDS[tierIndex] ?? ITEM_SOUNDS[ITEM_SOUNDS.length - 1];
+    const start = context.currentTime;
+
+    sound.notes.forEach((frequency, index) => {
+      const at = start + index * ITEM_SOUND_STAGGER;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+
+      oscillator.type = "triangle";
+      oscillator.frequency.value = frequency;
+
+      // Percussive shape: near-instant attack, exponential decay. The ramps
+      // start and end just above zero because exponentialRamp can't touch it,
+      // and cutting the note off flat instead would click audibly.
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(ITEM_SOUND_PEAK, at + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + sound.duration);
+
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(at);
+      oscillator.stop(at + sound.duration + 0.02);
+    });
+  };
+}
 
 // Returns the function initCommentStream calls for each arrival, or null when
 // the browser has no SpeechSynthesis (the button is then hidden rather than
@@ -980,7 +1138,7 @@ function initCommentSpeech() {
   };
 }
 
-function initCommentStream(speak) {
+function initCommentStream(speak, playItemSound) {
   const commentArea = document.getElementById("comment-area");
   const commentPanel = document.getElementById("comment-panel");
   const scrollWrap = document.getElementById("comment-scroll-wrap");
@@ -1138,10 +1296,6 @@ function initCommentStream(speak) {
       icon.title = data.item.name;
       icon.className = data.text ? "comment-item-icon-small" : "comment-item-icon";
 
-      // Also what gets read aloud for an item-only Comment, so the sentence
-      // heard is the same one shown rather than a second phrasing of it.
-      const sentItemText = `${data.item.name}を送りました。`;
-
       if (data.text) {
         icon.alt = "";
         entry.appendChild(icon);
@@ -1159,16 +1313,20 @@ function initCommentStream(speak) {
 
         const sentText = document.createElement("span");
         sentText.className = "comment-item-sent-text";
-        sentText.textContent = sentItemText;
+        sentText.textContent = `${data.item.name}を送りました。`;
         entry.appendChild(sentText);
       }
 
       pushTicker(data.item, data.id);
       flashPanel(tier);
-      // An Item carrying text reads as that text alone: the item's name is
-      // already conveyed by the sound of the arrival, and prefixing every
-      // comment with it would bury the part the sender actually wrote.
-      speak?.(data.text || sentItemText);
+      // Carries the arrival of an item-only Comment, which the read-aloud
+      // below deliberately stays silent for.
+      playItemSound?.(data.item.cost);
+      // Only what the sender actually wrote is spoken. An item-only Comment
+      // stays silent: "〜を送りました" carries nothing you can't already see
+      // in the ticker and the panel flash, and hearing it on repeat drowns out
+      // the comments that do have something to say.
+      speak?.(data.text);
     } else if (data.text) {
       const text = document.createElement("span");
       text.className = "comment-text";
@@ -1208,35 +1366,108 @@ function initCommentStream(speak) {
   };
 }
 
+// The collapse is animated by measuring the panel and the feed at both ends of
+// the toggle and driving those two heights as inline styles. Nothing needs to
+// know how tall the feed is, so there is no constant to drift out of sync and
+// it behaves identically at both breakpoints.
+//
+// Crucially, `scrollWrap.hidden` is still what "collapsed" means — it is only
+// applied once the animation lands. That keeps it the single source of truth
+// for the two other places that read it: initCommentStream's unread-badge
+// branch, and the .comment-panel:has(#comment-scroll-wrap[hidden]) rule that
+// releases the panel's fixed height.
+const COMMENT_TOGGLE_MS = 240;
+
 function initCommentPanel() {
+  const panel = document.getElementById("comment-panel");
   const header = document.getElementById("comment-header");
   const toggleButton = document.getElementById("comment-toggle-btn");
   const scrollWrap = document.getElementById("comment-scroll-wrap");
   const commentArea = document.getElementById("comment-area");
   const unreadBadge = document.getElementById("comment-unread-badge");
-  if (!header || !toggleButton || !scrollWrap || !commentArea) return;
+  if (!panel || !header || !toggleButton || !scrollWrap || !commentArea) return;
+
+  // Reads the layout the panel would have in the given state, then puts it
+  // back. Measuring beats arithmetic here: the panel's expanded height comes
+  // from CSS that differs per breakpoint, and its collapsed height is whatever
+  // the header and send row happen to add up to.
+  const measure = (hidden) => {
+    const previous = scrollWrap.hidden;
+    scrollWrap.hidden = hidden;
+    const size = { panel: panel.offsetHeight, wrap: hidden ? 0 : scrollWrap.offsetHeight };
+    scrollWrap.hidden = previous;
+    return size;
+  };
+
+  let finish = null;
+
+  const runToggle = (collapsed) => {
+    // A second click mid-run must not leave inline heights behind, so the run
+    // in flight is landed first.
+    finish?.();
+
+    const from = measure(scrollWrap.hidden);
+    const to = measure(collapsed);
+
+    // Laid out for the whole run in both directions — a closing feed stays on
+    // screen while it shrinks instead of vanishing on the first frame.
+    scrollWrap.hidden = false;
+    toggleButton.setAttribute("aria-expanded", String(!collapsed));
+
+    if (!collapsed && unreadBadge) {
+      unreadBadge.hidden = true;
+      unreadBadge.dataset.count = "0";
+    }
+
+    panel.style.height = `${from.panel}px`;
+    scrollWrap.style.height = `${from.wrap}px`;
+    panel.classList.add("is-animating");
+    // Forces the start values to be rendered, or the browser coalesces them
+    // with the end values below and there is nothing to transition between.
+    void panel.offsetHeight;
+    panel.style.height = `${to.panel}px`;
+    scrollWrap.style.height = `${to.wrap}px`;
+
+    const onEnd = (event) => {
+      if (event.target === panel && event.propertyName === "height") finish?.();
+    };
+
+    // transitionend is not guaranteed: under prefers-reduced-motion there is no
+    // transition at all, and a toggle whose two ends measure the same never
+    // fires one either. The timer is what always ends the run.
+    const timer = setTimeout(() => finish?.(), COMMENT_TOGGLE_MS + 60);
+
+    finish = () => {
+      finish = null;
+      clearTimeout(timer);
+      panel.removeEventListener("transitionend", onEnd);
+      panel.classList.remove("is-animating");
+      panel.style.height = "";
+      scrollWrap.style.height = "";
+      scrollWrap.hidden = collapsed;
+
+      if (collapsed) {
+        // A comment's entrance animation (see initCommentStream's "entering"
+        // class) may still be mid-flight when the panel closes, which pauses
+        // it rather than firing animationend — strip the class now so it can't
+        // replay from the start when the panel reopens.
+        commentArea.querySelectorAll("li.entering").forEach((li) => li.classList.remove("entering"));
+      } else {
+        // Only meaningful once the inline heights are gone and the feed has
+        // its real scrollable size back.
+        commentArea.scrollTop = commentArea.scrollHeight;
+      }
+    };
+
+    panel.addEventListener("transitionend", onEnd);
+  };
 
   header.addEventListener("click", (event) => {
     // Controls that live in the header do their own thing; only a click on the
     // bare header collapses the feed.
-    if (event.target.closest(".ticker-item, .comment-speech-btn")) return;
+    if (event.target.closest(".ticker-item, .comment-header-btn")) return;
 
-    scrollWrap.hidden = !scrollWrap.hidden;
-    toggleButton.setAttribute("aria-expanded", String(!scrollWrap.hidden));
-
-    if (scrollWrap.hidden) {
-      // A comment's entrance animation (see initCommentStream's "entering"
-      // class) may still be mid-flight when the panel closes, which pauses
-      // it rather than firing animationend — strip the class now so it can't
-      // replay from the start when the panel reopens.
-      commentArea.querySelectorAll("li.entering").forEach((li) => li.classList.remove("entering"));
-    } else {
-      if (unreadBadge) {
-        unreadBadge.hidden = true;
-        unreadBadge.dataset.count = "0";
-      }
-      commentArea.scrollTop = commentArea.scrollHeight;
-    }
+    runToggle(!scrollWrap.hidden);
   });
 }
 
@@ -1246,10 +1477,24 @@ function initItemList() {
   const groupTabs = document.getElementById("item-group-tabs");
   const toggleButton = document.getElementById("item-toggle-btn");
   const closeButton = document.getElementById("item-panel-close-btn");
+  const prevButton = document.getElementById("item-prev-btn");
+  const nextButton = document.getElementById("item-next-btn");
   if (!itemPanel || !itemList || !groupTabs || !toggleButton) return;
 
   let lastFetchTime = 0;
   let activeGroup = null;
+
+  // The grid shows three columns at a time; anything past that is reached with
+  // the arrows. They stay in the layout when disabled (see .item-nav-btn) so
+  // the grid beside them keeps a constant width.
+  const syncNav = () => {
+    if (!prevButton || !nextButton) return;
+    // 1px of slack: fractional column widths mean scrollLeft rarely lands
+    // exactly on scrollWidth - clientWidth at the far end.
+    const maxScroll = itemList.scrollWidth - itemList.clientWidth;
+    prevButton.disabled = itemList.scrollLeft <= 1;
+    nextButton.disabled = itemList.scrollLeft >= maxScroll - 1;
+  };
 
   const applyActiveGroup = () => {
     groupTabs.querySelectorAll(".item-group-tab").forEach((tab) => {
@@ -1260,6 +1505,10 @@ function initItemList() {
     itemList.querySelectorAll(".item-box").forEach((box) => {
       box.hidden = box.dataset.group !== activeGroup;
     });
+    // A new group starts at its cheapest item rather than inheriting the
+    // previous group's scroll position.
+    itemList.scrollLeft = 0;
+    syncNav();
   };
 
   const selectGroup = (group) => {
@@ -1329,6 +1578,8 @@ function initItemList() {
           itemList.appendChild(itemBox);
         }
         lastFetchTime = Date.now();
+        // Items just landed, so scrollWidth only becomes meaningful now.
+        syncNav();
       });
   };
 
@@ -1350,6 +1601,19 @@ function initItemList() {
   });
 
   if (closeButton) closeButton.addEventListener("click", closePanel);
+
+  // One viewport's worth per press, so a press always advances by whole
+  // columns and the arrows stay in step with what's on screen.
+  const scrollByPage = (direction) => {
+    itemList.scrollBy({ left: direction * itemList.clientWidth });
+  };
+
+  prevButton?.addEventListener("click", () => scrollByPage(-1));
+  nextButton?.addEventListener("click", () => scrollByPage(1));
+  itemList.addEventListener("scroll", syncNav);
+  // The grid's column width is a percentage of the panel, so a resize changes
+  // how far one page scrolls and whether an end has been reached.
+  window.addEventListener("resize", syncNav);
 
   document.addEventListener("click", (event) => {
     if (itemPanel.hidden) return;
@@ -1552,9 +1816,17 @@ function initSelectedItemPreview() {
   update();
 }
 
+// "auto" means instant, not cancelled: someone who has asked for reduced
+// motion still needs to arrive, they just don't want to watch the travel.
+function scrollBehavior() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
 function initChannelList(switchChannel) {
   const listEl = document.getElementById("channel-list");
   const tabsEl = document.getElementById("channel-tabs");
+  const titleEl = document.getElementById("now-playing-title");
+  const categoryEl = document.getElementById("now-playing-category");
   if (!listEl || !tabsEl) return;
 
   fetch(CHANNELS_URL)
@@ -1573,6 +1845,19 @@ function initChannelList(switchChannel) {
           btn.classList.toggle("active", isActive);
           btn.setAttribute("aria-pressed", String(isActive));
         });
+
+        // The "now playing" line under the video is driven straight from here
+        // rather than watching the .active class the way initSelectedItemChip
+        // watches item selection: there's one producer and one consumer, and
+        // the channel object with the title in it is only in scope at this point.
+        const active = liveChannels.find((channel) => channel.id === activeId);
+        if (!active) return;
+        if (titleEl) titleEl.textContent = active.title;
+        if (categoryEl) {
+          categoryEl.textContent = active.category;
+          categoryEl.title = `${active.category}のチャンネル一覧を表示`;
+          categoryEl.hidden = !active.category;
+        }
       };
 
       const applyActiveCategory = () => {
@@ -1621,6 +1906,10 @@ function initChannelList(switchChannel) {
         btn.appendChild(title);
 
         btn.addEventListener("click", () => {
+          // Picking a channel means "watch this", and the channel panel sits
+          // below the fold — so go back to the top of the page, even when the
+          // channel is the one already playing and there's nothing to switch to.
+          window.scrollTo({ top: 0, behavior: scrollBehavior() });
           if (channel.id === activeId) return;
           activeId = channel.id;
           applyActiveChannel();
@@ -1629,6 +1918,22 @@ function initChannelList(switchChannel) {
 
         listEl.appendChild(btn);
       }
+
+      // The category under the video doubles as the way back to the rest of
+      // that genre: the channel panel sits below the fold on most screens, and
+      // the tabs there may be showing a category the viewer browsed to rather
+      // than the one actually playing. Reading activeId at click time (instead
+      // of closing over it) keeps this a single listener across channel switches.
+      categoryEl?.addEventListener("click", () => {
+        const active = liveChannels.find((channel) => channel.id === activeId);
+        if (!active) return;
+        selectCategory(active.category);
+        tabsEl.querySelector(".channel-tab.active")?.focus({ preventScroll: true });
+        document.getElementById("channel-panel")?.scrollIntoView({
+          behavior: scrollBehavior(),
+          block: "nearest",
+        });
+      });
 
       applyActiveChannel();
       applyActiveCategory();
@@ -1670,9 +1975,16 @@ function initLayoutFit() {
   if (!layout || !videoArea || !sidePanel) return;
 
   const MOBILE_QUERY = window.matchMedia("(max-width: 767px)");
-  // Kept in sync with .video-area's aspect-ratio and max-height in styles.css.
-  const VIDEO_ASPECT = 16 / 9;
+  // Kept in sync with .video-area's max-height in styles.css.
   const VIDEO_MAX_HEIGHT_VH = 0.85;
+
+  // Read back from the custom property initVideoAspect writes, rather than
+  // held as a constant here, so there is one definition of the current ratio
+  // and this can't drift out of step with what CSS is actually rendering.
+  const videoAspect = () => {
+    const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--video-aspect"));
+    return Number.isFinite(value) && value > 0 ? value : 16 / 9;
+  };
 
   const update = () => {
     if (MOBILE_QUERY.matches) {
@@ -1691,12 +2003,13 @@ function initLayoutFit() {
     const layoutWidth = layout.clientWidth;
     const sidebarWidth = sidePanel.getBoundingClientRect().width;
     const availableForVideo = layoutWidth - gapPx - sidebarWidth;
-    const maxVideoWidthFromHeight = window.innerHeight * VIDEO_MAX_HEIGHT_VH * VIDEO_ASPECT;
+    const maxVideoWidthFromHeight = window.innerHeight * VIDEO_MAX_HEIGHT_VH * videoAspect();
 
     // Setting an explicit width (rather than leaving it to flex-grow) keeps the
-    // box's true rendered shape at exactly 16:9 even once height-capped —
-    // letting aspect-ratio alone interact with flex-grow + max-height could
-    // leave the box wider than 16:9, letterboxing the actual video inside it.
+    // box's true rendered shape at exactly the video's ratio even once
+    // height-capped — letting aspect-ratio alone interact with flex-grow +
+    // max-height could leave the box wider than the video, letterboxing the
+    // actual picture inside it.
     const videoWidth = Math.min(availableForVideo, maxVideoWidthFromHeight);
     videoArea.style.width = `${videoWidth}px`;
 
@@ -1708,11 +2021,20 @@ function initLayoutFit() {
 
   window.addEventListener("resize", update);
   MOBILE_QUERY.addEventListener("change", update);
+
+  // The video's own dimensions feed videoAspect(), so the layout has to be
+  // recomputed whenever they change — on first metadata and on every channel
+  // switch. Listening to the same two events initVideoAspect does, rather than
+  // wiring the two functions together: both are reacting to the same fact.
+  const player = document.getElementById("player");
+  player?.addEventListener("loadedmetadata", update);
+  player?.addEventListener("resize", update);
+
   update();
 }
 
 const switchChannel = initPlayer();
-initCommentStream(initCommentSpeech());
+initCommentStream(initCommentSpeech(), initItemSound());
 initCommentPanel();
 initChannelList(switchChannel);
 initItemList();

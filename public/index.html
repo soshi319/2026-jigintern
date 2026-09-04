@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f2f2f0" />
+    <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
     <title>視聴画面</title>
     <script>
       (function () {
@@ -68,107 +69,124 @@
       </div>
     </div>
     <main id="main-content" class="layout">
-      <div id="video-area" class="box video-area" tabindex="0">
-        <video id="player" playsinline autopictureinpicture>
-          お使いのブラウザは動画再生に対応していません。
-        </video>
-        <button id="video-play-overlay" type="button" class="video-play-overlay" aria-label="再生">
-          <svg viewBox="0 0 24 24" width="60" height="60" aria-hidden="true">
-            <path
-              d="M9 6.5v11l9-5.5z"
-              fill="currentColor"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linejoin="round"
+      <div class="video-column">
+        <div id="video-area" class="box video-area" tabindex="0">
+          <video id="player" playsinline>
+            お使いのブラウザは動画再生に対応していません。
+          </video>
+          <button id="video-play-overlay" type="button" class="video-play-overlay" aria-label="再生">
+            <svg viewBox="0 0 24 24" width="60" height="60" aria-hidden="true">
+              <path
+                d="M9 6.5v11l9-5.5z"
+                fill="currentColor"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <div id="video-buffering-overlay" class="video-buffering-overlay" hidden aria-hidden="true">
+            <span class="video-buffering-spinner"></span>
+          </div>
+
+          <div id="video-controls-bar" class="video-controls-bar">
+            <button id="video-playpause-btn" type="button" class="video-bar-btn" aria-label="再生">
+              <svg class="bar-icon icon-play" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path d="M8 5v14l11-7z" fill="currentColor" />
+              </svg>
+              <svg class="bar-icon icon-pause" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <rect x="6" y="5" width="4" height="14" fill="currentColor" />
+                <rect x="14" y="5" width="4" height="14" fill="currentColor" />
+              </svg>
+            </button>
+
+            <button id="video-mute-btn" type="button" class="video-bar-btn" aria-label="ミュート">
+              <svg class="bar-icon icon-volume" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path d="M4 9v6h4l5 5V4L8 9H4z" fill="currentColor" />
+                <path
+                  d="M16.5 8.5a5 5 0 0 1 0 7"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+              </svg>
+              <svg class="bar-icon icon-muted" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path d="M4 9v6h4l5 5V4L8 9H4z" fill="currentColor" />
+                <path
+                  d="M15.5 9.5l5 5m0-5l-5 5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </button>
+
+            <input
+              id="video-volume-slider"
+              type="range"
+              class="video-volume-slider"
+              min="0"
+              max="1"
+              step="0.01"
+              value="1"
+              aria-label="音量"
             />
-          </svg>
-        </button>
-        <div id="video-buffering-overlay" class="video-buffering-overlay" hidden aria-hidden="true">
-          <span class="video-buffering-spinner"></span>
+
+            <div class="video-bar-spacer"></div>
+
+            <button
+              id="video-pip-btn"
+              type="button"
+              class="video-bar-btn"
+              aria-label="ピクチャーインピクチャーで再生"
+              hidden
+            >
+              <svg class="bar-icon icon-enter-pip" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
+                <rect x="12" y="11" width="8" height="6" rx="1" fill="currentColor" />
+              </svg>
+              <svg class="bar-icon icon-exit-pip" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
+                <path
+                  d="M18 16.5l-4-4m0 0h3m-3 0v3"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+
+            <button id="video-fullscreen-btn" type="button" class="video-bar-btn" aria-label="全画面表示">
+              <svg class="bar-icon icon-enter-fullscreen" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path
+                  d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <svg class="bar-icon icon-exit-fullscreen" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path
+                  d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
-
-        <div id="video-controls-bar" class="video-controls-bar">
-          <button id="video-playpause-btn" type="button" class="video-bar-btn" aria-label="再生">
-            <svg class="bar-icon icon-play" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-              <path d="M8 5v14l11-7z" fill="currentColor" />
-            </svg>
-            <svg class="bar-icon icon-pause" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-              <rect x="6" y="5" width="4" height="14" fill="currentColor" />
-              <rect x="14" y="5" width="4" height="14" fill="currentColor" />
-            </svg>
-          </button>
-
-          <button id="video-mute-btn" type="button" class="video-bar-btn" aria-label="ミュート">
-            <svg class="bar-icon icon-volume" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-              <path d="M4 9v6h4l5 5V4L8 9H4z" fill="currentColor" />
-              <path
-                d="M16.5 8.5a5 5 0 0 1 0 7"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-              />
-            </svg>
-            <svg class="bar-icon icon-muted" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-              <path d="M4 9v6h4l5 5V4L8 9H4z" fill="currentColor" />
-              <path
-                d="M15.5 9.5l5 5m0-5l-5 5"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-              />
-            </svg>
-          </button>
-
-          <input
-            id="video-volume-slider"
-            type="range"
-            class="video-volume-slider"
-            min="0"
-            max="1"
-            step="0.01"
-            value="1"
-            aria-label="音量"
-          />
-
-          <div class="video-bar-spacer"></div>
-
-          <button
-            id="video-pip-btn"
-            type="button"
-            class="video-bar-btn"
-            aria-label="ピクチャーインピクチャーで再生"
-            hidden
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
-              <rect x="12" y="11" width="8" height="6" rx="1" fill="currentColor" />
-            </svg>
-          </button>
-
-          <button id="video-fullscreen-btn" type="button" class="video-bar-btn" aria-label="全画面表示">
-            <svg class="bar-icon icon-enter-fullscreen" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path
-                d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-            <svg class="bar-icon icon-exit-fullscreen" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path
-                d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
+        <div id="now-playing" class="now-playing">
+          <h2 id="now-playing-title" class="now-playing-title"></h2>
+          <button id="now-playing-category" type="button" class="now-playing-category" hidden></button>
         </div>
       </div>
       <div class="side-panel">
@@ -181,13 +199,32 @@
             </button>
             <div id="item-ticker" class="item-ticker"></div>
             <button
+              id="comment-sound-btn"
+              type="button"
+              class="comment-header-btn is-on"
+              aria-pressed="true"
+              aria-label="アイテムの効果音を止める"
+            >
+              <svg class="icon-on" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path d="M9 17V5l10-2v12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <circle cx="6.5" cy="17.5" r="2.5" fill="currentColor" />
+                <circle cx="16.5" cy="15.5" r="2.5" fill="currentColor" />
+              </svg>
+              <svg class="icon-off" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path d="M9 17V5l10-2v12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <circle cx="6.5" cy="17.5" r="2.5" fill="currentColor" />
+                <circle cx="16.5" cy="15.5" r="2.5" fill="currentColor" />
+                <path d="M3 3l18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+              </svg>
+            </button>
+            <button
               id="comment-speech-btn"
               type="button"
-              class="comment-speech-btn"
+              class="comment-header-btn"
               aria-pressed="false"
               aria-label="コメントを読み上げる"
             >
-              <svg class="bar-icon icon-speech-on" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <svg class="icon-on" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                 <path d="M4 9v6h4l5 5V4L8 9H4z" fill="currentColor" />
                 <path
                   d="M16.5 8.5a5 5 0 0 1 0 7"
@@ -197,7 +234,7 @@
                   stroke-linecap="round"
                 />
               </svg>
-              <svg class="bar-icon icon-speech-off" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <svg class="icon-off" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                 <path d="M4 9v6h4l5 5V4L8 9H4z" fill="currentColor" />
                 <path
                   d="M15.5 9.5l5 5m0-5l-5 5"
@@ -282,7 +319,33 @@
             <button id="item-panel-close-btn" type="button" class="item-panel-close-btn" aria-label="閉じる">×</button>
           </div>
           <div id="item-group-tabs" class="item-group-tabs"></div>
-          <div id="item-list"></div>
+          <div class="item-list-viewport">
+            <button id="item-prev-btn" type="button" class="item-nav-btn item-nav-prev" aria-label="前のアイテムを表示">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path
+                  d="M15 5l-7 7 7 7"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+            <div id="item-list"></div>
+            <button id="item-next-btn" type="button" class="item-nav-btn item-nav-next" aria-label="次のアイテムを表示">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path
+                  d="M9 5l7 7-7 7"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
         </div>
 

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Hand-drawn rather than derived from sabila_icon.svg: that file is an
+       imagetracer.js output of 8,481 paths and 2.07 MB, which is unusable at
+       favicon size and weight. The gradient matches .site-logo-text's wordmark
+       so the tab still reads as the same brand. -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#86efac" />
+      <stop offset="1" stop-color="#22c55e" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#g)" />
+  <path d="M25 19.5v25l21-12.5z" fill="#ffffff" />
+</svg>

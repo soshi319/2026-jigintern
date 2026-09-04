@@ -1,5 +1,10 @@
 :root {
   color-scheme: light;
+  /* Width divided by height, as a plain number so it works both as an
+     aspect-ratio value and inside calc(). initVideoAspect overwrites it once
+     the stream reports its real dimensions; 16:9 is only the value used for
+     the first paint and for a channel whose metadata never arrives. */
+  --video-aspect: 1.7778;
   --color-bg: #f2f2f0;
   --color-surface: #ffffff;
   --color-text: #1a1a1a;
@@ -241,9 +246,14 @@ button {
     color 0.15s ease;
 }
 
+/* --video-aspect is written on :root by initVideoAspect from the stream's own
+   videoWidth/videoHeight, so a cinemascope channel gets a cinemascope box
+   rather than 16:9 with black bars. It is the single source for all three
+   consumers: this rule, --mobile-panel-height, and initLayoutFit — which
+   reads the same custom property back rather than keeping its own copy. */
 .video-area {
   position: relative;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: var(--video-aspect);
   max-height: 85vh;
   overflow: hidden;
 }
@@ -373,9 +383,44 @@ button {
   transition: background-color 0.15s ease;
 }
 
-.video-bar-btn:hover,
-.video-bar-btn.active {
+.video-bar-btn:hover {
   background: rgba(255, 255, 255, 0.18);
+}
+
+/* Deliberately no longer sharing a declaration with :hover. They used to,
+   which meant an inactive button under the pointer looked exactly like an
+   active one — and you are always pointing at the button you are about to
+   press, so the state was unreadable at the moment it mattered most. */
+.video-bar-btn.active {
+  color: var(--color-accent);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Nothing else reports a failed picture-in-picture request: the promise
+   rejects (no user gesture left, no video track yet) and the control bar has
+   no error surface to write to. A short nudge is the feedback. */
+.video-bar-btn.is-failed {
+  animation: bar-btn-shake 0.3s ease-in-out;
+}
+
+@keyframes bar-btn-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-bar-btn.is-failed {
+    animation: none;
+    color: var(--color-error);
+  }
 }
 
 .video-bar-btn[hidden] {
@@ -386,8 +431,17 @@ button {
    a time, flipped by a state class set from JS (play/pause, mute, fullscreen). */
 .video-bar-btn .icon-pause,
 .video-bar-btn .icon-muted,
+.video-bar-btn .icon-exit-pip,
 .video-bar-btn .icon-exit-fullscreen {
   display: none;
+}
+
+#video-pip-btn.active .icon-enter-pip {
+  display: none;
+}
+
+#video-pip-btn.active .icon-exit-pip {
+  display: block;
 }
 
 #video-playpause-btn.is-playing .icon-play {
@@ -458,6 +512,61 @@ button {
   flex: 1;
 }
 
+/* Wraps the video and the "now playing" line so they share one column and one
+   width. The explicit px width initLayoutFit sets still goes on .video-area
+   itself; this column just hugs it. */
+.video-column {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.now-playing {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0 0.15rem;
+  /* Holds its space before channels.json lands, so the comment panel beside it
+     doesn't jump down once the title appears. */
+  min-height: 1.9rem;
+}
+
+.now-playing-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+/* A button, not a label: it jumps to that genre in the channel panel. */
+.now-playing-category {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.72em;
+  padding: 0.15rem 0.55rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-muted-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.now-playing-category:hover {
+  background: var(--color-muted-surface-hover);
+  color: var(--color-accent);
+}
+
+.now-playing-category[hidden] {
+  display: none;
+}
+
 .side-panel {
   display: flex;
   flex-direction: column;
@@ -490,6 +599,33 @@ button {
   height: auto;
   min-height: 0;
   max-height: none;
+}
+
+/* The collapse is animated by initCommentPanel, which measures both ends and
+   drives them as inline heights. Nothing here needs to know how tall the feed
+   is, so there is no constant to keep in sync and it behaves the same at both
+   breakpoints. The transition is scoped to .is-animating rather than left on
+   .comment-panel because animating height on a box this large forces layout —
+   the same reason .box leaves box-shadow out of its own transition. */
+.comment-panel.is-animating {
+  transition: height 0.24s ease;
+}
+
+/* flex-basis would win over the height being animated, so the wrap steps out
+   of flex sizing for the duration. overflow clips .comment-area, which is
+   absolutely positioned and would otherwise spill past the shrinking wrap and
+   over the send row. */
+.comment-panel.is-animating .comment-scroll-wrap {
+  flex: 0 0 auto;
+  overflow: hidden;
+  transition: height 0.24s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .comment-panel.is-animating,
+  .comment-panel.is-animating .comment-scroll-wrap {
+    transition: none;
+  }
 }
 
 .comment-panel.flash {
@@ -669,9 +805,10 @@ button {
   color: var(--color-text);
 }
 
-/* Sits inside .comment-header, which collapses the feed when clicked — the
-   handler there excludes this button (as it already does the ticker items). */
-.comment-speech-btn {
+/* The on/off toggles in .comment-header (read-aloud, item sound). That header
+   collapses the feed when clicked, so its handler excludes these buttons the
+   same way it already excludes the ticker items. */
+.comment-header-btn {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -688,25 +825,27 @@ button {
     background-color 0.15s ease;
 }
 
-.comment-speech-btn:hover {
+.comment-header-btn:hover {
   opacity: 1;
   background: var(--color-muted-surface);
 }
 
-.comment-speech-btn.is-on {
+.comment-header-btn.is-on {
   color: var(--color-accent);
   opacity: 1;
 }
 
-.comment-speech-btn .icon-speech-on {
+/* Both icons ship in the markup and .is-on picks between them, the same
+   pattern the video control bar uses for play/pause and mute. */
+.comment-header-btn .icon-on {
   display: none;
 }
 
-.comment-speech-btn.is-on .icon-speech-on {
+.comment-header-btn.is-on .icon-on {
   display: block;
 }
 
-.comment-speech-btn.is-on .icon-speech-off {
+.comment-header-btn.is-on .icon-off {
   display: none;
 }
 
@@ -1145,9 +1284,13 @@ button {
   }
 }
 
+/* Two columns at every width, growing downward as channels are added, rather
+   than the auto-fill that widened into three and four on a large screen. The
+   minmax(0, …) is what stops a long title (Cosmos Laundromat: First Cycle)
+   from pushing its column wider than the other and unbalancing the pair. */
 .channel-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9em, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
   max-height: 220px;
   overflow-y: auto;
@@ -1304,16 +1447,69 @@ button {
   }
 }
 
+.item-list-viewport {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+}
+
+/* Two fixed rows, filled top-to-bottom then left-to-right (grid-auto-flow:
+   column), which is exactly the order asked for: cheapest top-left, next
+   below it, then on to the following column. Three columns are visible at a
+   time whatever the panel's width, and the rest are reached with the arrows.
+   The row height is fixed so every box is the same size regardless of how
+   long its name is. */
 #item-list {
+  --item-gap: 0.5rem;
   flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0.5rem;
+  min-width: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(4.5em, 1fr));
-  align-content: start;
-  gap: 0.5rem;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, 5.1em);
+  grid-auto-columns: calc((100% - 2 * var(--item-gap)) / 3);
+  gap: var(--item-gap);
+  padding: 0.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+#item-list::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  #item-list {
+    scroll-behavior: smooth;
+  }
+}
+
+.item-nav-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  border: none;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
+}
+
+.item-nav-btn:hover:not(:disabled) {
+  color: var(--color-accent);
+}
+
+/* Kept in the layout rather than hidden at the ends, so the grid beside it
+   doesn't change width every time you reach an edge. */
+.item-nav-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
 }
 
 .item-box {
@@ -1321,6 +1517,7 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0.2rem;
   min-width: 0;
   font: inherit;
@@ -1329,8 +1526,10 @@ button {
   border-radius: 4px;
   background: var(--color-surface);
   cursor: pointer;
-  content-visibility: auto;
-  contain-intrinsic-size: 80px;
+  /* content-visibility:auto was dropped when the grid became a fixed 2-row
+     horizontal scroller: skipped boxes report the wrong size, which throws off
+     scrollWidth and so the arrows' end detection. A single group is ~20 boxes,
+     so there was nothing to gain from it anyway. */
   transition:
     background-color 0.15s ease,
     border-color 0.15s ease;
@@ -1472,12 +1671,16 @@ button {
 
 @media (max-width: 767px) {
   :root {
-    /* Video is single-column here, so its width ≈ the layout's own width (98vw),
-       and its height follows from that via the 16:9 aspect-ratio (98 * 9/16 ≈ 55vw;
-       57vw is used to over-estimate slightly, so we never reserve too little for it).
+    /* Video is single-column here, so its width ≈ the layout's own width (98vw);
+       100vw is divided by the real aspect ratio instead, over-estimating the
+       height slightly so we never reserve too little for it. Using
+       --video-aspect rather than a baked-in 57vw means a cinemascope channel
+       (a short, wide video) correctly frees up its extra height for comments.
        Comment panel gets whatever's left after video + a buffer for the heading/margins/
-       gaps above it, preferring 65vh when there's room to spare, never below 200px. */
-    --mobile-panel-height: clamp(200px, calc(100vh - 57vw - 6rem), 65vh);
+       gaps above it, preferring 65vh when there's room to spare, never below 200px.
+       The buffer also has to cover the "now playing" line under the video
+       (.now-playing's 1.9rem min-height plus .video-column's 0.55rem gap). */
+    --mobile-panel-height: clamp(200px, calc(100vh - (100vw / var(--video-aspect)) - 8.5rem), 65vh);
   }
 
   .layout {
@@ -1485,6 +1688,10 @@ button {
     /* Only helps once scrolled to the very bottom — see .video-area below for
        what actually prevents overlap at the initial (unscrolled) view too. */
     padding-bottom: calc(var(--mobile-panel-height) + 2rem + env(safe-area-inset-bottom));
+  }
+
+  .video-column {
+    flex: 0 0 auto;
   }
 
   .video-area {
