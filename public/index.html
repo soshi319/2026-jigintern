@@ -188,13 +188,32 @@
             </button>
             <div id="item-ticker" class="item-ticker"></div>
             <button
+              id="comment-sound-btn"
+              type="button"
+              class="comment-header-btn is-on"
+              aria-pressed="true"
+              aria-label="アイテムの効果音を止める"
+            >
+              <svg class="icon-on" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path d="M9 17V5l10-2v12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <circle cx="6.5" cy="17.5" r="2.5" fill="currentColor" />
+                <circle cx="16.5" cy="15.5" r="2.5" fill="currentColor" />
+              </svg>
+              <svg class="icon-off" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path d="M9 17V5l10-2v12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <circle cx="6.5" cy="17.5" r="2.5" fill="currentColor" />
+                <circle cx="16.5" cy="15.5" r="2.5" fill="currentColor" />
+                <path d="M3 3l18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+              </svg>
+            </button>
+            <button
               id="comment-speech-btn"
               type="button"
-              class="comment-speech-btn"
+              class="comment-header-btn"
               aria-pressed="false"
               aria-label="コメントを読み上げる"
             >
-              <svg class="bar-icon icon-speech-on" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <svg class="icon-on" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                 <path d="M4 9v6h4l5 5V4L8 9H4z" fill="currentColor" />
                 <path
                   d="M16.5 8.5a5 5 0 0 1 0 7"
@@ -204,7 +223,7 @@
                   stroke-linecap="round"
                 />
               </svg>
-              <svg class="bar-icon icon-speech-off" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <svg class="icon-off" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                 <path d="M4 9v6h4l5 5V4L8 9H4z" fill="currentColor" />
                 <path
                   d="M15.5 9.5l5 5m0-5l-5 5"

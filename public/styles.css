@@ -724,9 +724,10 @@ button {
   color: var(--color-text);
 }
 
-/* Sits inside .comment-header, which collapses the feed when clicked — the
-   handler there excludes this button (as it already does the ticker items). */
-.comment-speech-btn {
+/* The on/off toggles in .comment-header (read-aloud, item sound). That header
+   collapses the feed when clicked, so its handler excludes these buttons the
+   same way it already excludes the ticker items. */
+.comment-header-btn {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -743,25 +744,27 @@ button {
     background-color 0.15s ease;
 }
 
-.comment-speech-btn:hover {
+.comment-header-btn:hover {
   opacity: 1;
   background: var(--color-muted-surface);
 }
 
-.comment-speech-btn.is-on {
+.comment-header-btn.is-on {
   color: var(--color-accent);
   opacity: 1;
 }
 
-.comment-speech-btn .icon-speech-on {
+/* Both icons ship in the markup and .is-on picks between them, the same
+   pattern the video control bar uses for play/pause and mute. */
+.comment-header-btn .icon-on {
   display: none;
 }
 
-.comment-speech-btn.is-on .icon-speech-on {
+.comment-header-btn.is-on .icon-on {
   display: block;
 }
 
-.comment-speech-btn.is-on .icon-speech-off {
+.comment-header-btn.is-on .icon-off {
   display: none;
 }
 

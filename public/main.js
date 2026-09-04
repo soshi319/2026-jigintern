@@ -930,6 +930,96 @@ const SPEECH_MAX_QUEUE = 3;
 // speech — long enough that one comment alone would fill the queue behind it.
 const SPEECH_MAX_CHARS = 50;
 
+// One entry per Cost Tier, cheapest first — synthesised rather than shipped as
+// audio files, so there's no asset to load, no licence to track, and the sound
+// can follow the tier table instead of being pinned to a fixed set of clips.
+// A 10-cost Item is a single short blip; a 1000-cost one is a four-note
+// arpeggio climbing higher and ringing longer, so what arrived is audible
+// without looking at the feed.
+const ITEM_SOUNDS = [
+  { notes: [659], duration: 0.12 },
+  { notes: [740, 988], duration: 0.16 },
+  { notes: [784, 1047], duration: 0.2 },
+  { notes: [880, 1175, 1397], duration: 0.26 },
+  { notes: [988, 1319, 1568, 1976], duration: 0.34 },
+];
+const ITEM_SOUND_STAGGER = 0.05;
+const ITEM_SOUND_PEAK = 0.16;
+
+// Returns the function initCommentStream calls for each item arrival, or null
+// when the browser has no Web Audio (the button is hidden rather than left as
+// a control that does nothing).
+function initItemSound() {
+  const button = document.getElementById("comment-sound-btn");
+  if (!button) return null;
+
+  const AudioCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtor) {
+    button.hidden = true;
+    return null;
+  }
+
+  // On by default, unlike the read-aloud toggle beside it. A short chime per
+  // item is the kind of ambient feedback a viewer expects from a stream; a
+  // synthesised voice reading every comment out loud is not.
+  let enabled = true;
+  let context = null;
+
+  // Autoplay policy: a context built before the viewer has interacted with the
+  // page starts suspended, and every note played into it is silently dropped.
+  // Since this defaults to on there's no toggle click to hang that on, so the
+  // context is created on the first gesture of any kind instead — and this
+  // page needs one to start the video regardless (autoplay is off by design).
+  const unlockAudio = () => {
+    context ??= new AudioCtor();
+    context.resume().catch(() => {});
+  };
+  document.addEventListener("pointerdown", unlockAudio, { once: true });
+  document.addEventListener("keydown", unlockAudio, { once: true });
+
+  const sync = () => {
+    button.classList.toggle("is-on", enabled);
+    button.setAttribute("aria-pressed", String(enabled));
+    button.setAttribute("aria-label", enabled ? "アイテムの効果音を止める" : "アイテムの効果音を鳴らす");
+  };
+
+  button.addEventListener("click", () => {
+    enabled = !enabled;
+    if (enabled) unlockAudio();
+    sync();
+  });
+
+  sync();
+
+  return (cost) => {
+    if (!enabled || !context) return;
+
+    const tierIndex = COST_TIERS.indexOf(tierForCost(cost));
+    const sound = ITEM_SOUNDS[tierIndex] ?? ITEM_SOUNDS[ITEM_SOUNDS.length - 1];
+    const start = context.currentTime;
+
+    sound.notes.forEach((frequency, index) => {
+      const at = start + index * ITEM_SOUND_STAGGER;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+
+      oscillator.type = "triangle";
+      oscillator.frequency.value = frequency;
+
+      // Percussive shape: near-instant attack, exponential decay. The ramps
+      // start and end just above zero because exponentialRamp can't touch it,
+      // and cutting the note off flat instead would click audibly.
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(ITEM_SOUND_PEAK, at + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + sound.duration);
+
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(at);
+      oscillator.stop(at + sound.duration + 0.02);
+    });
+  };
+}
+
 // Returns the function initCommentStream calls for each arrival, or null when
 // the browser has no SpeechSynthesis (the button is then hidden rather than
 // left as a control that does nothing).
@@ -986,7 +1076,7 @@ function initCommentSpeech() {
   };
 }
 
-function initCommentStream(speak) {
+function initCommentStream(speak, playItemSound) {
   const commentArea = document.getElementById("comment-area");
   const commentPanel = document.getElementById("comment-panel");
   const scrollWrap = document.getElementById("comment-scroll-wrap");
@@ -1167,6 +1257,9 @@ function initCommentStream(speak) {
 
       pushTicker(data.item, data.id);
       flashPanel(tier);
+      // Carries the arrival of an item-only Comment, which the read-aloud
+      // below deliberately stays silent for.
+      playItemSound?.(data.item.cost);
       // Only what the sender actually wrote is spoken. An item-only Comment
       // stays silent: "〜を送りました" carries nothing you can't already see
       // in the ticker and the panel flash, and hearing it on repeat drowns out
@@ -1222,7 +1315,7 @@ function initCommentPanel() {
   header.addEventListener("click", (event) => {
     // Controls that live in the header do their own thing; only a click on the
     // bare header collapses the feed.
-    if (event.target.closest(".ticker-item, .comment-speech-btn")) return;
+    if (event.target.closest(".ticker-item, .comment-header-btn")) return;
 
     scrollWrap.hidden = !scrollWrap.hidden;
     toggleButton.setAttribute("aria-expanded", String(!scrollWrap.hidden));
@@ -1779,7 +1872,7 @@ function initLayoutFit() {
 }
 
 const switchChannel = initPlayer();
-initCommentStream(initCommentSpeech());
+initCommentStream(initCommentSpeech(), initItemSound());
 initCommentPanel();
 initChannelList(switchChannel);
 initItemList();
