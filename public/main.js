@@ -1138,10 +1138,6 @@ function initCommentStream(speak) {
       icon.title = data.item.name;
       icon.className = data.text ? "comment-item-icon-small" : "comment-item-icon";
 
-      // Also what gets read aloud for an item-only Comment, so the sentence
-      // heard is the same one shown rather than a second phrasing of it.
-      const sentItemText = `${data.item.name}を送りました。`;
-
       if (data.text) {
         icon.alt = "";
         entry.appendChild(icon);
@@ -1159,16 +1155,17 @@ function initCommentStream(speak) {
 
         const sentText = document.createElement("span");
         sentText.className = "comment-item-sent-text";
-        sentText.textContent = sentItemText;
+        sentText.textContent = `${data.item.name}を送りました。`;
         entry.appendChild(sentText);
       }
 
       pushTicker(data.item, data.id);
       flashPanel(tier);
-      // An Item carrying text reads as that text alone: the item's name is
-      // already conveyed by the sound of the arrival, and prefixing every
-      // comment with it would bury the part the sender actually wrote.
-      speak?.(data.text || sentItemText);
+      // Only what the sender actually wrote is spoken. An item-only Comment
+      // stays silent: "〜を送りました" carries nothing you can't already see
+      // in the ticker and the panel flash, and hearing it on repeat drowns out
+      // the comments that do have something to say.
+      speak?.(data.text);
     } else if (data.text) {
       const text = document.createElement("span");
       text.className = "comment-text";
