@@ -6,12 +6,22 @@ const COMMENT_POST_URL = "https://intern-comment-server.intern-comment-server.de
 const ITEMS_URL = "https://intern-comment-server.intern-comment-server.deno.net/items";
 
 // cost is one of 10 / 50 / 150 / 400 / 1000 across the whole catalog — five tiers, cheap (cool) to expensive (warm).
+// bgItemOnly (light mode) is a solid color matching what rgba(rgb, 0.26) used to look like composited
+// over the light surface — picked via a color picker against that old translucent rendering, then
+// hardcoded so the look doesn't drift if the surface color ever changes. It's the fill for both the
+// item-only Comment and the outer frame of an item-with-text Comment (see CONTEXT.md's Comment entry) —
+// both read as "the Item's usual color," with only the nested text bubble in the latter breaking from it.
+// Dark mode uses `rgb` itself (full saturation) for that same fill instead — favoring a strongly colored
+// Item part over legibility of the item-only sentence against it.
+// bgItemWithTextDark — `rgb` blended ~35% toward white — is the Item Ticker's resting (non-hover) tone;
+// blending toward white less aggressively than the light-mode set keeps it standing out against a
+// near-black surface instead of washing out.
 const COST_TIERS = [
-  { max: 10, rgb: "56, 189, 248", text: "#0369a1", flashAlpha: 0.25 },
-  { max: 50, rgb: "34, 197, 94", text: "#15803d", flashAlpha: 0.32 },
-  { max: 150, rgb: "234, 179, 8", text: "#a16207", flashAlpha: 0.4 },
-  { max: 400, rgb: "249, 115, 22", text: "#c2410c", flashAlpha: 0.48 },
-  { max: 1000, rgb: "236, 72, 153", text: "#be185d", flashAlpha: 0.58 },
+  { max: 10, rgb: "56, 189, 248", text: "#0369a1", flashAlpha: 0.25, bgItemOnly: "#CBEEFD", bgItemWithTextDark: "#7ED4FA" },
+  { max: 50, rgb: "34, 197, 94", text: "#15803d", flashAlpha: 0.32, bgItemOnly: "#C6F0D5", bgItemWithTextDark: "#6FD996" },
+  { max: 150, rgb: "234, 179, 8", text: "#a16207", flashAlpha: 0.4, bgItemOnly: "#FAEBBF", bgItemWithTextDark: "#F1CE5E" },
+  { max: 400, rgb: "249, 115, 22", text: "#c2410c", flashAlpha: 0.48, bgItemOnly: "#FDDBC3", bgItemWithTextDark: "#FBA468" },
+  { max: 1000, rgb: "236, 72, 153", text: "#be185d", flashAlpha: 0.58, bgItemOnly: "#FAD0E5", bgItemWithTextDark: "#F388BD" },
 ];
 
 function tierForCost(cost) {
@@ -26,12 +36,28 @@ function tickerDurationForCost(cost) {
   return TICKER_BASE_MS + cost * TICKER_MS_PER_COST;
 }
 
+// Hysteresis, not one shared threshold: a single cutoff flickered between
+// "LIVE" and "LIVEに戻る" right after jumping to live, since liveSyncPosition
+// jitters (new segments landing, buffer catching up) enough to cross a single
+// boundary back and forth for a few seconds. Once at LIVE, only fall behind
+// past the wider bound; once behind, only clear back to LIVE within the
+// narrower one — a gap sitting between the two no longer flips either way.
+const LIVE_EDGE_ENTER_BEHIND_SECONDS = 10;
+const LIVE_EDGE_EXIT_BEHIND_SECONDS = 4;
+
 function initPlayer() {
   const video = document.getElementById("player");
+  const playOverlay = document.getElementById("video-play-overlay");
   if (!video) return;
 
+  let hls = null;
+
   if (Hls.isSupported()) {
-    const hls = new Hls();
+    // hls.js defaults liveSyncPosition (what the LIVE badge/button jump to) to
+    // 3 segments behind the playlist's true edge, as a stall-avoidance buffer.
+    // Lowered here so "LIVE" tracks closer to the real edge, at the cost of
+    // being more likely to briefly buffer right after jumping to it.
+    hls = new Hls({ liveSyncDurationCount: 1 });
     hls.loadSource(STREAM_URL);
     hls.attachMedia(video);
     hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -56,7 +82,155 @@ function initPlayer() {
         textContent: "お使いのブラウザはこの配信の再生に対応していません。",
       }),
     );
+    if (playOverlay) playOverlay.hidden = true;
+    return;
   }
+
+  if (playOverlay) {
+    // Mirrors the video's own play/pause state rather than a one-shot "first
+    // play" prompt, so pausing (however it happens — the overlay, the native
+    // controls, a keyboard shortcut) always brings the big center button back.
+    playOverlay.addEventListener("click", () => video.play());
+    video.addEventListener("play", () => {
+      playOverlay.hidden = true;
+    });
+    video.addEventListener("pause", () => {
+      playOverlay.hidden = false;
+    });
+  }
+
+  initLiveBadge(video, hls);
+  initBufferingIndicator(video);
+  initPictureInPicture(video);
+}
+
+function initPictureInPicture(video) {
+  const btn = document.getElementById("video-pip-btn");
+  if (!btn) return;
+
+  // Safari uses webkitSupportsPresentationMode instead of the standard API;
+  // out of scope here, so the button just stays hidden there too.
+  if (!document.pictureInPictureEnabled || video.disablePictureInPicture) {
+    return;
+  }
+  btn.hidden = false;
+
+  btn.addEventListener("click", async () => {
+    try {
+      if (document.pictureInPictureElement === video) {
+        await document.exitPictureInPicture();
+      } else {
+        await video.requestPictureInPicture();
+      }
+    } catch {
+      // Rejected (e.g. video not ready yet) — nothing to recover from, the
+      // button just stays in its current state for the viewer to retry.
+    }
+  });
+
+  video.addEventListener("enterpictureinpicture", () => {
+    btn.classList.add("active");
+    btn.setAttribute("aria-label", "ピクチャーインピクチャーを終了");
+  });
+  video.addEventListener("leavepictureinpicture", () => {
+    btn.classList.remove("active");
+    btn.setAttribute("aria-label", "ピクチャーインピクチャーで再生");
+  });
+}
+
+function initLiveBadge(video, hls) {
+  const badge = document.getElementById("video-live-badge");
+  const label = badge ? badge.querySelector(".video-live-badge-label") : null;
+  if (!badge || !label) return;
+
+  // hls.js branch: hls.liveSyncPosition is the edge hls.js itself targets
+  // (accounts for its own live-sync-duration config). Native-Safari HLS has
+  // no hls.js instance at all, so that branch — and the hls.js branch before
+  // liveSyncPosition is known — falls back to the end of the seekable range,
+  // the only edge signal a plain <video> exposes.
+  const getLiveEdge = () => {
+    if (hls && typeof hls.liveSyncPosition === "number") return hls.liveSyncPosition;
+    if (video.seekable && video.seekable.length > 0) {
+      return video.seekable.end(video.seekable.length - 1);
+    }
+    return null;
+  };
+
+  const updateEdgeState = () => {
+    const edge = getLiveEdge();
+    // No edge info yet (stream just attached) — leave the badge in its
+    // default "live" look rather than guessing.
+    if (edge == null) return;
+
+    const gap = edge - video.currentTime;
+    const threshold = badge.classList.contains("behind")
+      ? LIVE_EDGE_EXIT_BEHIND_SECONDS
+      : LIVE_EDGE_ENTER_BEHIND_SECONDS;
+    const behind = gap > threshold;
+    badge.classList.toggle("behind", behind);
+    badge.setAttribute("tabindex", behind ? "0" : "-1");
+    badge.setAttribute("aria-label", behind ? "ライブに戻る" : "ライブ配信中");
+    label.textContent = behind ? "LIVEに戻る" : "LIVE";
+  };
+
+  // seeked: fires right after the viewer finishes dragging the native seek
+  // bar — the primary trigger for this feature. timeupdate: keeps the state
+  // correct while simply watching. playing: recheck right after a stall/seek
+  // resolves. The interval is a fallback for a paused video sitting exactly
+  // at the edge, where the edge keeps advancing without the playhead moving.
+  video.addEventListener("seeked", updateEdgeState);
+  video.addEventListener("timeupdate", updateEdgeState);
+  video.addEventListener("playing", updateEdgeState);
+  setInterval(updateEdgeState, 2000);
+
+  badge.addEventListener("click", () => {
+    if (!badge.classList.contains("behind")) return;
+    const edge = getLiveEdge();
+    if (edge == null) return;
+    video.currentTime = edge;
+    if (video.paused) video.play();
+  });
+
+  // Reconnecting: hls.js only. A fatal NETWORK_ERROR here is the same event
+  // initPlayer's own Hls.Events.ERROR listener reacts to by calling
+  // hls.startLoad() — this is a second, independent listener on the same
+  // event purely for the visual cue. Native Safari's built-in HLS engine
+  // retries internally with no equivalent JS-visible signal, so there is
+  // deliberately no reconnecting state in that branch.
+  if (hls) {
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (data.fatal && data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        badge.classList.add("reconnecting");
+      }
+    });
+    video.addEventListener("playing", () => {
+      badge.classList.remove("reconnecting");
+    });
+  }
+
+  updateEdgeState();
+}
+
+function initBufferingIndicator(video) {
+  const overlay = document.getElementById("video-buffering-overlay");
+  if (!overlay) return;
+
+  video.addEventListener("waiting", () => {
+    overlay.hidden = false;
+  });
+  // playing: normal resume after a stall. canplay: safety net for cases where
+  // "waiting" fires but "playing" doesn't reliably follow (e.g. resuming from
+  // a fully-paused state rather than a stall). pause: avoids a spinner left
+  // on screen over the big center play button if playback stops mid-wait.
+  video.addEventListener("playing", () => {
+    overlay.hidden = true;
+  });
+  video.addEventListener("canplay", () => {
+    overlay.hidden = true;
+  });
+  video.addEventListener("pause", () => {
+    overlay.hidden = true;
+  });
 }
 
 function initCommentStream() {
@@ -164,6 +338,7 @@ function initCommentStream() {
       entry.dataset.targetId = targetId;
       entry.title = item.name;
       entry.style.setProperty("--cost-rgb", tier.rgb);
+      entry.style.setProperty("--item-with-text-bg-dark", tier.bgItemWithTextDark);
 
       const icon = document.createElement("img");
       icon.src = item.iconUrl;
@@ -208,6 +383,7 @@ function initCommentStream() {
     if (data.item) {
       const tier = tierForCost(data.item.cost);
       entry.style.setProperty("--cost-rgb", tier.rgb);
+      entry.style.setProperty("--item-only-bg", tier.bgItemOnly);
       entry.classList.add("comment-has-item", data.text ? "comment-item-with-text" : "comment-item-only");
 
       const icon = document.createElement("img");
@@ -219,10 +395,13 @@ function initCommentStream() {
         icon.alt = "";
         entry.appendChild(icon);
 
+        const bubble = document.createElement("span");
+        bubble.className = "comment-text-bubble";
         const text = document.createElement("span");
         text.className = "comment-text";
         text.textContent = data.text;
-        entry.appendChild(text);
+        bubble.appendChild(text);
+        entry.appendChild(bubble);
       } else {
         icon.alt = data.item.name;
         entry.appendChild(icon);
@@ -351,6 +530,9 @@ function initItemList() {
           itemBox.dataset.id = item.id;
           itemBox.dataset.group = item.group;
           itemBox.hidden = item.group !== activeGroup;
+          const tier = tierForCost(item.cost);
+          itemBox.style.setProperty("--cost-rgb", tier.rgb);
+          itemBox.style.setProperty("--item-only-bg", tier.bgItemOnly);
 
           const icon = document.createElement("img");
           icon.dataset.id = item.id;
@@ -366,7 +548,11 @@ function initItemList() {
           name.className = "item-name";
           name.textContent = item.name;
           name.title = item.name;
-          name.style.color = tierForCost(item.cost).text;
+          // .text is tuned for light backgrounds; on dark backgrounds those same
+          // shades read as near-black, so dark mode reuses the tier's own .rgb
+          // (already a lighter tone, used elsewhere for tints/flashes) as text color.
+          name.style.setProperty("--item-name-color", tier.text);
+          name.style.setProperty("--item-name-color-dark", `rgb(${tier.rgb})`);
           itemBox.appendChild(name);
 
           itemList.appendChild(itemBox);
@@ -434,8 +620,21 @@ function initCommentSend() {
   };
   const resizeInput = () => {
     input.style.height = "auto";
+    // overflow stays hidden below max-height so a 1px scrollHeight/clientHeight
+    // rounding mismatch (line-height fractions) doesn't leave a spurious
+    // scrollbar on a single line; the +1 tolerance absorbs that rounding.
+    const maxHeight = parseFloat(getComputedStyle(input).maxHeight) || Infinity;
+    input.style.overflowY = input.scrollHeight > maxHeight + 1 ? "auto" : "hidden";
     input.style.height = `${input.scrollHeight}px`;
   };
+  // Corner radius is fixed to half the natural one-line height (measured once,
+  // while the textarea is still empty) instead of the relative 999px pill,
+  // so it stays a constant curve at the top/bottom corners as the box grows
+  // taller, with straight sides in between, rather than re-inflating into a
+  // bigger semicircle at every height.
+  input.style.height = "auto";
+  input.style.setProperty("--textarea-radius", `${input.scrollHeight / 2}px`);
+  resizeInput();
   const checkLimits = () => {
     const text = input.value;
     if (text.length > 200) {
@@ -544,6 +743,72 @@ function initSelectedItemChip() {
   update();
 }
 
+function initSelectedItemPreview() {
+  const itemPanel = document.getElementById("item-panel");
+  const itemList = document.getElementById("item-list");
+  const sendRow = document.querySelector(".send-row");
+  const sendArea = document.getElementById("send-area");
+  if (!itemPanel || !itemList || !sendRow) return;
+
+  const update = () => {
+    const selectedBox = itemList.querySelector(".item-box.selected");
+    if (selectedBox) {
+      const costRgb = selectedBox.style.getPropertyValue("--cost-rgb");
+      const itemOnlyBg = selectedBox.style.getPropertyValue("--item-only-bg");
+      sendRow.style.setProperty("--cost-rgb", costRgb);
+      sendRow.style.setProperty("--item-only-bg", itemOnlyBg);
+      sendRow.classList.add("item-selected");
+      if (sendArea) {
+        sendArea.style.setProperty("--cost-rgb", costRgb);
+        sendArea.style.setProperty("--item-only-bg", itemOnlyBg);
+        sendArea.classList.add("item-selected");
+      }
+    } else {
+      sendRow.classList.remove("item-selected");
+      if (sendArea) sendArea.classList.remove("item-selected");
+    }
+  };
+
+  // Selection lives entirely as the .selected class on an .item-box (see
+  // initItemList) — watch that, same as initSelectedItemChip, rather than a
+  // separate selection variable.
+  new MutationObserver(update).observe(itemPanel, {
+    attributes: true,
+    attributeFilter: ["class"],
+    subtree: true,
+  });
+
+  update();
+}
+
+function initTheme() {
+  const root = document.documentElement;
+  const toggleButton = document.getElementById("theme-toggle-btn");
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (!toggleButton) return;
+
+  const THEME_STORAGE_KEY = "theme";
+  const THEME_COLORS = { light: "#f2f2f0", dark: "#15171a" };
+
+  const applyTheme = (theme) => {
+    root.dataset.theme = theme;
+    toggleButton.setAttribute("aria-checked", String(theme === "dark"));
+    toggleButton.setAttribute("aria-label", theme === "dark" ? "ライトモードに切り替え" : "ダークモードに切り替え");
+    if (themeColorMeta) themeColorMeta.setAttribute("content", THEME_COLORS[theme]);
+  };
+
+  // The inline script in index.html's <head> already set root.dataset.theme
+  // before first paint (avoids a flash of the wrong theme); this just syncs
+  // the button/meta to whatever it picked.
+  applyTheme(root.dataset.theme === "dark" ? "dark" : "light");
+
+  toggleButton.addEventListener("click", () => {
+    const next = root.dataset.theme === "dark" ? "light" : "dark";
+    localStorage.setItem(THEME_STORAGE_KEY, next);
+    applyTheme(next);
+  });
+}
+
 function initLayoutFit() {
   const layout = document.querySelector(".layout");
   const videoArea = document.getElementById("video-area");
@@ -598,4 +863,6 @@ initCommentPanel();
 initItemList();
 initCommentSend();
 initSelectedItemChip();
+initSelectedItemPreview();
+initTheme();
 initLayoutFit();

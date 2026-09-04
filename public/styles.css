@@ -1,8 +1,146 @@
+/* Plain custom properties aren't typed, so a change to one (e.g. flipping
+   data-theme) can't be smoothly interpolated by any transition that
+   references it — the value just snaps on the next paint, no matter what
+   `transition` says. @property gives each color token a real <color> type,
+   which is what actually lets those transitions animate instead of jumping. */
+@property --color-bg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #f2f2f0;
+}
+@property --color-surface {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #ffffff;
+}
+@property --color-text {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #1a1a1a;
+}
+@property --color-accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #16a34a;
+}
+@property --color-accent-hover {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #15803d;
+}
+@property --color-border {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #d0d7d5;
+}
+@property --color-border-soft {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #eef2f1;
+}
+@property --color-muted-surface {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #eeeeec;
+}
+@property --color-muted-surface-hover {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #e2e2df;
+}
+@property --color-selected-surface {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #e6e6e3;
+}
+@property --color-selected-surface-hover {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #dadad7;
+}
+@property --color-icon-fill {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #333330;
+}
+@property --color-icon-stroke {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #232321;
+}
+@property --color-remove-bg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #8a8a86;
+}
+@property --color-error {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #d64545;
+}
+@property --color-switch-track {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #78828c;
+}
+@property --color-switch-track-hover {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #8a95a0;
+}
+@property --shadow-soft {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(74, 85, 83, 0.08);
+}
+@property --shadow-strong {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(74, 85, 83, 0.25);
+}
+
 :root {
+  color-scheme: light;
   --color-bg: #f2f2f0;
   --color-surface: #ffffff;
   --color-text: #1a1a1a;
-  --color-accent: #4f9153;
+  --color-accent: #16a34a;
+  --color-accent-hover: #15803d;
+  --color-border: #d0d7d5;
+  --color-border-soft: #eef2f1;
+  --color-muted-surface: #eeeeec;
+  --color-muted-surface-hover: #e2e2df;
+  --color-selected-surface: #e6e6e3;
+  --color-selected-surface-hover: #dadad7;
+  --color-icon-fill: #333330;
+  --color-icon-stroke: #232321;
+  --color-remove-bg: #8a8a86;
+  --color-error: #d64545;
+  --color-switch-track: #78828c;
+  --color-switch-track-hover: #8a95a0;
+  --shadow-soft: rgba(74, 85, 83, 0.08);
+  --shadow-strong: rgba(74, 85, 83, 0.25);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #15171a;
+  --color-surface: #1e2124;
+  --color-text: #eaebec;
+  --color-accent: #4ade80;
+  --color-accent-hover: #22c55e;
+  --color-border: #33383c;
+  --color-border-soft: #2a2d30;
+  --color-muted-surface: #2a2d30;
+  --color-muted-surface-hover: #33383c;
+  --color-selected-surface: #33403a;
+  --color-selected-surface-hover: #3d4c44;
+  --color-icon-fill: #e8e9ea;
+  --color-icon-stroke: #cfd2d4;
+  --color-remove-bg: #5b6067;
+  --color-error: #ff6b6b;
+  --shadow-soft: rgba(0, 0, 0, 0.4);
+  --shadow-strong: rgba(0, 0, 0, 0.55);
 }
 
 body {
@@ -15,6 +153,28 @@ body {
     "Hiragino Sans",
     "Yu Gothic",
     sans-serif;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+/* Safety net for the theme switch: covers every element that doesn't already
+   declare its own transition for these properties (most interactive elements
+   do, for their hover/active states, and keep using that one instead — this
+   rule only ever applies where nothing more specific already won). */
+* {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    fill 0.15s ease,
+    stroke 0.15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none;
+  }
 }
 
 button {
@@ -30,12 +190,134 @@ button {
   padding: 0.5rem 1rem;
   background: var(--color-accent);
   color: #fff;
-  border-radius: 0 0 8px 0;
+  border-radius: 0 0 4px 0;
   transition: top 0.2s ease;
 }
 
 .skip-link:focus {
   top: 0;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 98vw;
+  margin: 0 auto 1rem;
+  padding: 1.4rem 1.5rem;
+  border-radius: 4px;
+  /* Deliberately fixed, not a --color-* token — the header bar stays this
+     dark gray regardless of the page's own light/dark theme (like a toolbar/
+     chrome color), so children below can't rely on theme-following tokens
+     for contrast against it (see the theme-switch icon overrides). */
+  background: #2d3033;
+  color: #fff;
+}
+
+.site-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.site-logo-icon {
+  display: block;
+  height: 2.6rem;
+  width: auto;
+}
+
+.site-logo-text {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-weight: 800;
+  font-size: 1.8rem;
+  letter-spacing: 0.02em;
+  /* Same gradient the old icon's wordmark used, kept so the brand look
+     carries over even without the cup+spoon mark. */
+  background: linear-gradient(to right, #86efac, #22c55e);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.theme-switch {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0;
+  margin-right: 1.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.theme-switch-icon {
+  flex: 0 0 auto;
+}
+
+.theme-switch-icon-sun {
+  color: #e8a33d;
+}
+
+/* Fixed neutral, not var(--color-icon-fill) — that flips dark-on-light in
+   light mode, which would be invisible against .page-header's own always-dark
+   background (the header no longer follows the page theme, see .page-header). */
+.theme-switch-icon-moon {
+  color: #9aa0a6;
+}
+
+/* Whichever icon matches the current mode is colored; the other stays neutral. */
+:root[data-theme="dark"] .theme-switch-icon-sun {
+  color: #9aa0a6;
+}
+
+:root[data-theme="dark"] .theme-switch-icon-moon {
+  color: var(--color-accent);
+}
+
+.theme-switch-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 3.2em;
+  height: 1.7em;
+  border-radius: 999px;
+  /* Deliberately its own tokens, not --color-muted-surface — that sits too
+     close to the page background to read as a distinct control at a glance.
+     Stays this neutral gray in both states — green marks the moon icon, not
+     the track. */
+  background: var(--color-switch-track);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.3);
+  transition: background-color 0.15s ease;
+}
+
+.theme-switch:hover .theme-switch-track {
+  background: var(--color-switch-track-hover);
+}
+
+.theme-switch-thumb {
+  position: absolute;
+  top: 0.15em;
+  left: 0.15em;
+  width: 1.4em;
+  height: 1.4em;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: -2px 2px 6px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s ease;
+}
+
+:root[data-theme="dark"] .theme-switch-thumb {
+  transform: translateX(1.5em);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-switch-thumb {
+    transition: none;
+  }
 }
 
 .layout {
@@ -61,12 +343,13 @@ button {
   align-items: center;
   justify-content: center;
   background: var(--color-surface);
-  border-radius: 12px;
+  border-radius: 4px;
   color: var(--color-text);
-  box-shadow: 0 2px 12px rgba(74, 85, 83, 0.08);
+  box-shadow: 0 2px 12px var(--shadow-soft);
 }
 
 .video-area {
+  position: relative;
   aspect-ratio: 16 / 9;
   max-height: 85vh;
   overflow: hidden;
@@ -77,6 +360,195 @@ button {
   height: 100%;
   object-fit: contain;
   background: #000;
+}
+
+.video-play-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.5em;
+  height: 4.5em;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+  /* No backing shape behind the bare triangle, so a drop-shadow keeps it
+     legible against whatever the video frame underneath happens to look like. */
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+  transition: transform 0.15s ease;
+}
+
+.video-play-overlay:hover {
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+.video-play-overlay svg {
+  /* Optically center the play triangle — its own bounding box has more
+     empty space on the left of the shape than the right. */
+  transform: translateX(2px);
+}
+
+.video-play-overlay[hidden] {
+  display: none;
+}
+
+.video-live-badge {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.3rem 0.7rem;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font: inherit;
+  font-size: 0.75em;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: default;
+  transition: background-color 0.15s ease;
+}
+
+.video-live-badge-dot {
+  flex: 0 0 auto;
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
+  animation: live-dot-pulse 2s ease-out infinite;
+}
+
+@keyframes live-dot-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.video-live-badge-label {
+  line-height: 1;
+}
+
+/* Behind the live edge: the badge itself becomes the "戻る" affordance —
+   dot goes neutral/hollow (no longer "this is the live moment"), whole
+   pill becomes clickable, per the class-on-DOM-element state convention
+   (see .selected on .item-box). */
+.video-live-badge.behind {
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.video-live-badge.behind .video-live-badge-dot {
+  background: #9aa0a6;
+  animation: none;
+  box-shadow: none;
+}
+
+.video-live-badge.behind:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+/* hls.js retrying after a fatal NETWORK_ERROR — amber + fast blink, distinct
+   from both the steady red "live" dot and the flat gray "behind" dot. */
+.video-live-badge.reconnecting .video-live-badge-dot {
+  background: #f59e0b;
+  animation: live-dot-blink 0.8s steps(1, end) infinite;
+  box-shadow: none;
+}
+
+@keyframes live-dot-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-live-badge-dot {
+    animation: none;
+  }
+}
+
+.video-buffering-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.video-buffering-overlay[hidden] {
+  display: none;
+}
+
+.video-buffering-spinner {
+  width: 2.75em;
+  height: 2.75em;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+  animation: buffering-spin 0.9s linear infinite;
+}
+
+@keyframes buffering-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-buffering-spinner {
+    animation: none;
+    border-top-color: rgba(255, 255, 255, 0.6);
+  }
+}
+
+.video-pip-btn {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1em;
+  height: 2.1em;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.video-pip-btn:hover,
+.video-pip-btn.active {
+  background: rgba(0, 0, 0, 0.75);
+}
+
+.video-pip-btn[hidden] {
+  display: none;
 }
 
 .side-panel {
@@ -148,8 +620,8 @@ button {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid #eef2f1;
+  padding: 0.4rem 0.5rem 0.4rem 0.9rem;
+  border-bottom: 1px solid var(--color-border-soft);
   cursor: pointer;
 }
 
@@ -221,6 +693,19 @@ button {
   background: rgba(var(--cost-rgb, 79, 145, 83), 0.42);
 }
 
+/* The translucent tint above reads fine on the light surface, but washes out
+   against dark mode's near-black one — same issue the comment backgrounds had,
+   fixed the same way: a solid, dark-tuned tone instead of low-alpha over dark. */
+:root[data-theme="dark"] .ticker-item {
+  background: var(--item-with-text-bg-dark, rgb(var(--cost-rgb)));
+  box-shadow: 0 0 8px rgba(var(--cost-rgb), 0.6);
+}
+
+:root[data-theme="dark"] .ticker-item:hover {
+  background: rgb(var(--cost-rgb));
+  box-shadow: 0 0 12px rgba(var(--cost-rgb), 0.85);
+}
+
 .ticker-item::after {
   content: "";
   position: absolute;
@@ -265,7 +750,7 @@ button {
   position: relative;
   z-index: 1;
   font-weight: 600;
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .comment-unread-badge {
@@ -324,7 +809,7 @@ button {
 }
 
 .comment-jump-btn:hover {
-  background: #417a45;
+  background: var(--color-accent-hover);
 }
 
 .comment-area li {
@@ -337,8 +822,16 @@ button {
   animation: comment-in 0.3s ease-out;
 }
 
+/* Text-only comments have no padding of their own (unlike .comment-has-item,
+   which gets 0.5rem left/right via its own rule below), so they sit flush
+   against .comment-area's edge. Match that same 0.5rem here so both kinds
+   read as equally inset. */
+.comment-area li:not(.comment-has-item) {
+  padding: 0 0.5rem;
+}
+
 .comment-area li.comment-has-item {
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 0.65rem 0.5rem;
   animation: comment-in-item 0.4s ease-out;
 }
@@ -348,21 +841,53 @@ button {
   justify-content: flex-start;
   gap: 0.5rem;
   overflow: hidden;
-  background: rgba(var(--cost-rgb), 0.26);
+  background: var(--item-only-bg);
 }
 
 .comment-area li.comment-item-with-text {
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.2rem;
-  background: rgba(var(--cost-rgb), 0.12);
+  gap: 0.3rem;
+  /* Same fill as the item-only variant — the outer frame is meant to read as
+     "this is the usual Item color," and the nested text bubble below is what
+     carries the distinction, not a lighter frame tone. */
+  background: var(--item-only-bg);
 }
 
+/* The item-only sentence and the item-with-text frame both go full-saturation
+   vivid here rather than a darkened tone — favoring a strongly colored "Item
+   part" over legibility of "◯◯を送りました。" against it (the nested text
+   bubble is what still needs to stay readable, and it's handled separately below). */
+:root[data-theme="dark"] .comment-area li.comment-item-only,
+:root[data-theme="dark"] .comment-area li.comment-item-with-text {
+  background: rgb(var(--cost-rgb));
+}
+
+:root[data-theme="dark"] .comment-area li.comment-has-item {
+  box-shadow: 0 0 14px rgba(var(--cost-rgb), 0.45);
+}
+
+/* Light mode: Cost Tier fills are pale, so text sitting directly on one (the
+   item-only sentence) stays a fixed dark color rather than following
+   --color-text. Dark mode's fill above is deep enough for the reverse. */
+.comment-area li.comment-item-only .comment-item-sent-text {
+  color: #1a1a1a;
+}
+
+:root[data-theme="dark"] .comment-area li.comment-item-only .comment-item-sent-text {
+  color: #fff;
+}
+
+/* A white glow (drop-shadow follows the icon's own transparent-background
+   silhouette, unlike box-shadow) helps the Item icon stand out against its
+   own Cost Tier background — most visible against the vivid dark-mode fill,
+   basically invisible against light mode's pale one, so no theme split needed. */
 .comment-item-icon {
   flex: 0 0 auto;
   width: 2em;
   height: 2em;
   object-fit: contain;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9));
 }
 
 .comment-item-icon-small {
@@ -370,10 +895,33 @@ button {
   width: 1.5em;
   height: 1.5em;
   object-fit: contain;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9));
 }
 
-.comment-item-with-text .comment-text {
-  padding-left: 0.6em;
+/* The "usual item" color lives solid on the outer frame (.comment-item-with-text);
+   this inner bubble — like a LINE message bubble — holds just the text, as a
+   translucent overlay over whatever frame color sits behind it rather than a
+   flat white/black box: white in light mode (a faint, lightened tint of the
+   Item's own color, with dark text), black in dark mode (a faint, darkened
+   tint, with white text — matching Comment text being unified to white there). */
+.comment-text-bubble {
+  display: block;
+  margin-left: 0.6em;
+  padding: 0.4rem 0.7rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.comment-text-bubble .comment-text {
+  color: #1a1a1a;
+}
+
+:root[data-theme="dark"] .comment-text-bubble {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+:root[data-theme="dark"] .comment-text-bubble .comment-text {
+  color: #fff;
 }
 
 .comment-item-sent-text {
@@ -435,7 +983,18 @@ button {
   overflow-y: auto;
   gap: 0.35rem;
   padding: 0.4rem;
-  border-top: 1px solid #eef2f1;
+  border-top: 1px solid var(--color-border-soft);
+  transition: background-color 0.15s ease;
+}
+
+/* One layer further out than .send-row.item-selected — the whole send area
+   (chip + error text + row) picks up the Item's color while one is Selected. */
+.send-area.item-selected {
+  background: var(--item-only-bg);
+}
+
+:root[data-theme="dark"] .send-area.item-selected {
+  background: rgb(var(--cost-rgb));
 }
 
 .selected-item-chip[hidden] {
@@ -451,19 +1010,21 @@ button {
   height: 2em;
   padding: 0;
   border: 1px solid var(--color-accent);
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   align-self: flex-start;
   margin-left: 12px;
 }
 
+/* Plain white/black (not the gray --color-selected-surface) — a soft gray chip
+   read as muddy sitting on the now-colored #send-area behind it. */
 #selected-item-chip {
-  background: #e6e6e3;
+  background: var(--color-surface);
   box-shadow: none;
 }
 
 #selected-item-chip:hover {
-  background: #dadad7;
+  filter: brightness(0.92);
   box-shadow: none;
 }
 
@@ -482,7 +1043,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #8a8a86;
+  background: var(--color-remove-bg);
   color: #fff;
   border-radius: 50%;
   font-size: 0.65em;
@@ -491,7 +1052,7 @@ button {
 
 .comment-error {
   margin: 0;
-  color: #d64545;
+  color: var(--color-error);
   font-size: 0.85em;
 }
 
@@ -499,7 +1060,20 @@ button {
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
-  padding: 0 0.4rem;
+  padding: 0.4rem;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+}
+
+/* Mirrors the solid Cost Tier background an item-bearing comment gets after
+   sending (see .comment-item-only) — light mode uses the same picked pastel;
+   dark mode falls back to the plain tier color until it gets its own set. */
+.send-row.item-selected {
+  background: var(--item-only-bg);
+}
+
+:root[data-theme="dark"] .send-row.item-selected {
+  background: rgb(var(--cost-rgb));
 }
 
 #item-toggle-btn {
@@ -512,13 +1086,13 @@ button {
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: #eeeeec;
+  background: var(--color-muted-surface);
   cursor: pointer;
   box-shadow: none;
 }
 
 #item-toggle-btn:hover {
-  background: #e2e2df;
+  background: var(--color-muted-surface-hover);
   box-shadow: none;
 }
 
@@ -528,8 +1102,8 @@ button {
 }
 
 .row-icon-fill {
-  fill: #333330;
-  stroke: #232321;
+  fill: var(--color-icon-fill);
+  stroke: var(--color-icon-stroke);
   stroke-width: 1.3;
   stroke-linejoin: round;
 }
@@ -543,8 +1117,8 @@ button {
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(74, 85, 83, 0.25);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px var(--shadow-strong);
   overflow: hidden;
   z-index: 20;
   animation: item-panel-in 0.18s ease-out;
@@ -577,7 +1151,7 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #eef2f1;
+  border-bottom: 1px solid var(--color-border-soft);
   font-weight: 600;
 }
 
@@ -605,7 +1179,7 @@ button {
   gap: 1rem;
   padding: 0 0.75rem;
   overflow-x: auto;
-  border-bottom: 1px solid #eef2f1;
+  border-bottom: 1px solid var(--color-border-soft);
   -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
   mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
 }
@@ -662,8 +1236,8 @@ button {
   min-width: 0;
   font: inherit;
   padding: 0.4rem 0.3rem;
-  border: 1px solid #d0d7d5;
-  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
   background: var(--color-surface);
   cursor: pointer;
   content-visibility: auto;
@@ -683,15 +1257,27 @@ button {
   transform: scale(0.96);
 }
 
+/* A soft glow in the Item's own Cost Tier color — the panel is dark enough
+   there that a plain neutral border reads as flat, so each Item gets a hint
+   of its own color radiating outward instead. */
+:root[data-theme="dark"] .item-box {
+  box-shadow: 0 0 8px rgba(var(--cost-rgb), 0.55);
+}
+
+:root[data-theme="dark"] .item-box:hover,
+:root[data-theme="dark"] .item-box.selected {
+  box-shadow: 0 0 12px rgba(var(--cost-rgb), 0.8);
+}
+
 .item-box img {
   width: 2.4em;
   height: 2.4em;
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: 3px;
 }
 
 .item-box.selected {
-  background: #e6e6e3;
+  background: var(--color-selected-surface);
   border-color: var(--color-accent);
 }
 
@@ -703,6 +1289,11 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
+  color: var(--item-name-color, inherit);
+}
+
+:root[data-theme="dark"] .item-box .item-name {
+  color: var(--item-name-color-dark, inherit);
 }
 
 .send-area textarea {
@@ -711,11 +1302,11 @@ button {
   font: inherit;
   line-height: 1.4;
   padding: 0.5rem 1.1rem;
-  border: 1px solid #d0d7d5;
-  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--textarea-radius, 999px);
   box-sizing: border-box;
   max-height: calc(1.4em * 4 + 1rem);
-  overflow-y: auto;
+  overflow-y: hidden;
 }
 
 .send-area button {
@@ -723,7 +1314,7 @@ button {
   font: inherit;
   padding: 0.4rem 0.9rem;
   border: none;
-  border-radius: 8px;
+  border-radius: 4px;
   background: var(--color-accent);
   color: #fff;
   cursor: pointer;
@@ -735,7 +1326,7 @@ button {
 }
 
 .send-area button:hover:not(:disabled) {
-  background: #417a45;
+  background: var(--color-accent-hover);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.22);
 }
 
@@ -758,12 +1349,12 @@ button {
   height: 2.4em;
   padding: 0;
   border-radius: 50%;
-  background: #eeeeec;
+  background: var(--color-muted-surface);
   box-shadow: none;
 }
 
 #comment-send:hover:not(:disabled) {
-  background: #e2e2df;
+  background: var(--color-muted-surface-hover);
   box-shadow: none;
 }
 
