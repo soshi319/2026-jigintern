@@ -39,7 +39,7 @@ One key combination bound to a single action, e.g. Alt+T. A Combo names a key by
 _Avoid_: keybinding, shortcut key, accelerator, hotkey
 
 **Global Shortcut**:
-A Combo that acts anywhere on the page regardless of what has focus, and that the viewer can reassign. Covers play/pause, focusing the comment input, opening the item panel, fullscreen, mute, dark mode, and comment read-aloud. A Global Shortcut whose Combo contains neither Alt nor Ctrl produces a character when pressed, so it is suppressed while the viewer is typing; the viewer is warned about this when assigning one but is not prevented from doing so. A Global Shortcut may also be Unassigned — carrying no Combo at all — either because the viewer cleared it, or because a newly added action's default Combo was already taken by one of the viewer's own assignments. Contrast with Player Shortcut.
+A Combo that acts anywhere on the page regardless of what has focus, and that the viewer can reassign. Covers play/pause, focusing the comment input, opening the item panel, fullscreen, picture-in-picture, mute, dark mode, and comment read-aloud. A Global Shortcut whose Combo contains neither Alt nor Ctrl produces a character when pressed, so it is suppressed while the viewer is typing; the viewer is warned about this when assigning one but is not prevented from doing so. A Global Shortcut may also be Unassigned — carrying no Combo at all — either because the viewer cleared it, or because a newly added action's default Combo was already taken by one of the viewer's own assignments. Contrast with Player Shortcut.
 _Avoid_: hotkey, keybind, global hotkey
 
 **Player Shortcut**:
@@ -49,3 +49,15 @@ _Avoid_: video shortcut, player hotkey
 **Shortcut Panel**:
 The modal listing every Global Shortcut and Player Shortcut alongside the action it performs, and the only place a Global Shortcut's Combo is reassigned. Opened either from a button in the page header or by the `?` key, which is itself fixed and cannot be reassigned.
 _Avoid_: help dialog, settings modal, keymap, cheat sheet
+
+**Channel**:
+One of the streams a viewer can watch (`id`, `title`, `category`, `playlist`, `default`, `retired`, plus `attribution`, `license` and `source` crediting its maker), listed by `/channels.json`. Exactly one Channel plays at a time; picking another swaps which playlist the player is following rather than starting a second player, so volume and the control bar's state carry across. A retired Channel is excluded from the list entirely. Every Channel is currently one of Blender's open films, and they do not share a single shape — some are 16:9 and some are cinemascope, so the page's whole layout follows whichever is playing.
+_Avoid_: stream, program, video, film
+
+**Channel Category**:
+The genre a Channel belongs to (its `category`, e.g. コメディ, ドラマ, SF, ファンタジー). The channel list is paged by Channel Category, one page per genre — the same shape as Item Group for Items. The Category of whatever is playing is also a link back into its own genre's page, so the viewer can reach the rest of it from under the video.
+_Avoid_: genre, tab (this project's term is "category", matching the API field)
+
+**Now Playing**:
+The line directly under the video naming the Channel being watched and its Channel Category. It exists because nothing else in the viewer's line of sight says what they are looking at — before it, the only clue was which entry sat highlighted in the channel list further down the page. It carries the title and Category only: no description or presenter, because no such thing is published about a Channel.
+_Avoid_: video title, header, metadata
