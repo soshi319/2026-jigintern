@@ -1,5 +1,10 @@
 :root {
   color-scheme: light;
+  /* Width divided by height, as a plain number so it works both as an
+     aspect-ratio value and inside calc(). initVideoAspect overwrites it once
+     the stream reports its real dimensions; 16:9 is only the value used for
+     the first paint and for a channel whose metadata never arrives. */
+  --video-aspect: 1.7778;
   --color-bg: #f2f2f0;
   --color-surface: #ffffff;
   --color-text: #1a1a1a;
@@ -241,9 +246,14 @@ button {
     color 0.15s ease;
 }
 
+/* --video-aspect is written on :root by initVideoAspect from the stream's own
+   videoWidth/videoHeight, so a cinemascope channel gets a cinemascope box
+   rather than 16:9 with black bars. It is the single source for all three
+   consumers: this rule, --mobile-panel-height, and initLayoutFit — which
+   reads the same custom property back rather than keeping its own copy. */
 .video-area {
   position: relative;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: var(--video-aspect);
   max-height: 85vh;
   overflow: hidden;
 }
@@ -1586,14 +1596,16 @@ button {
 
 @media (max-width: 767px) {
   :root {
-    /* Video is single-column here, so its width ≈ the layout's own width (98vw),
-       and its height follows from that via the 16:9 aspect-ratio (98 * 9/16 ≈ 55vw;
-       57vw is used to over-estimate slightly, so we never reserve too little for it).
+    /* Video is single-column here, so its width ≈ the layout's own width (98vw);
+       100vw is divided by the real aspect ratio instead, over-estimating the
+       height slightly so we never reserve too little for it. Using
+       --video-aspect rather than a baked-in 57vw means a cinemascope channel
+       (a short, wide video) correctly frees up its extra height for comments.
        Comment panel gets whatever's left after video + a buffer for the heading/margins/
        gaps above it, preferring 65vh when there's room to spare, never below 200px.
        The buffer also has to cover the "now playing" line under the video
        (.now-playing's 1.9rem min-height plus .video-column's 0.55rem gap). */
-    --mobile-panel-height: clamp(200px, calc(100vh - 57vw - 8.5rem), 65vh);
+    --mobile-panel-height: clamp(200px, calc(100vh - (100vw / var(--video-aspect)) - 8.5rem), 65vh);
   }
 
   .layout {

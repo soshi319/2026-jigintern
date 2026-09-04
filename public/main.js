@@ -117,6 +117,7 @@ function initPlayer() {
     video.play().catch(() => {});
   };
 
+  initVideoAspect(video);
   initBufferingIndicator(video);
   initPictureInPicture(video);
   initPlayPauseControl(video, playFromLive);
@@ -145,6 +146,25 @@ function initPlayer() {
   };
 
   return switchChannel;
+}
+
+// The channels are Blender's open films, which are not all 16:9 — Sintel and
+// Tears of Steel are cinemascope. Publishing the stream's real ratio as
+// --video-aspect keeps .video-area, --mobile-panel-height and initLayoutFit
+// all working off one number instead of three copies of 16/9.
+function initVideoAspect(video) {
+  const publish = () => {
+    if (!video.videoWidth || !video.videoHeight) return;
+    document.documentElement.style.setProperty("--video-aspect", String(video.videoWidth / video.videoHeight));
+  };
+
+  // "resize" is the event for a change in the video's own intrinsic size, so
+  // it covers a channel switch as well as the first metadata. loadedmetadata
+  // is kept alongside it because it is the more reliably fired of the two on
+  // the initial load.
+  video.addEventListener("loadedmetadata", publish);
+  video.addEventListener("resize", publish);
+  publish();
 }
 
 function initPlayPauseControl(video, playFromLive) {
@@ -1830,9 +1850,16 @@ function initLayoutFit() {
   if (!layout || !videoArea || !sidePanel) return;
 
   const MOBILE_QUERY = window.matchMedia("(max-width: 767px)");
-  // Kept in sync with .video-area's aspect-ratio and max-height in styles.css.
-  const VIDEO_ASPECT = 16 / 9;
+  // Kept in sync with .video-area's max-height in styles.css.
   const VIDEO_MAX_HEIGHT_VH = 0.85;
+
+  // Read back from the custom property initVideoAspect writes, rather than
+  // held as a constant here, so there is one definition of the current ratio
+  // and this can't drift out of step with what CSS is actually rendering.
+  const videoAspect = () => {
+    const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--video-aspect"));
+    return Number.isFinite(value) && value > 0 ? value : 16 / 9;
+  };
 
   const update = () => {
     if (MOBILE_QUERY.matches) {
@@ -1851,12 +1878,13 @@ function initLayoutFit() {
     const layoutWidth = layout.clientWidth;
     const sidebarWidth = sidePanel.getBoundingClientRect().width;
     const availableForVideo = layoutWidth - gapPx - sidebarWidth;
-    const maxVideoWidthFromHeight = window.innerHeight * VIDEO_MAX_HEIGHT_VH * VIDEO_ASPECT;
+    const maxVideoWidthFromHeight = window.innerHeight * VIDEO_MAX_HEIGHT_VH * videoAspect();
 
     // Setting an explicit width (rather than leaving it to flex-grow) keeps the
-    // box's true rendered shape at exactly 16:9 even once height-capped —
-    // letting aspect-ratio alone interact with flex-grow + max-height could
-    // leave the box wider than 16:9, letterboxing the actual video inside it.
+    // box's true rendered shape at exactly the video's ratio even once
+    // height-capped — letting aspect-ratio alone interact with flex-grow +
+    // max-height could leave the box wider than the video, letterboxing the
+    // actual picture inside it.
     const videoWidth = Math.min(availableForVideo, maxVideoWidthFromHeight);
     videoArea.style.width = `${videoWidth}px`;
 
@@ -1868,6 +1896,15 @@ function initLayoutFit() {
 
   window.addEventListener("resize", update);
   MOBILE_QUERY.addEventListener("change", update);
+
+  // The video's own dimensions feed videoAspect(), so the layout has to be
+  // recomputed whenever they change — on first metadata and on every channel
+  // switch. Listening to the same two events initVideoAspect does, rather than
+  // wiring the two functions together: both are reacting to the same fact.
+  const player = document.getElementById("player");
+  player?.addEventListener("loadedmetadata", update);
+  player?.addEventListener("resize", update);
+
   update();
 }
 
