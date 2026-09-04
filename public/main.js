@@ -300,6 +300,12 @@ function initPlayerKeyboardShortcuts(video, playFromLive) {
   if (!area) return;
 
   area.addEventListener("keydown", (event) => {
+    // These are bare-key shortcuts, so a held modifier means the press belongs
+    // to something else. Without this, Alt+M inside the video area would match
+    // "m" here AND the Global Shortcut on document as the event bubbles up:
+    // two muteBtn.click() calls for one press, toggling mute straight back off.
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+
     switch (event.key) {
       case " ":
       case "Enter":
@@ -330,6 +336,526 @@ function initPlayerKeyboardShortcuts(video, playFromLive) {
       default:
         break;
     }
+  });
+}
+
+// A Combo names a key by its physical position (event.code), not by the
+// character it produces: holding Option on a Mac turns event.key for Option+T
+// into "†", while event.code stays "KeyT" whatever the layout or modifiers
+// (https://www.w3.org/TR/uievents/#dom-keyboardevent-code). Combos are matched
+// and compared in that form ("Alt+KeyT") and converted to a viewer-facing
+// label ("Option+T") only at render time — see formatCombo.
+const IS_MAC = /Mac/i.test(navigator.userAgentData?.platform || navigator.platform || "");
+
+// Modifiers are always emitted in this order, so the same keypress always
+// produces the same string and two Combos can be compared with ===.
+const COMBO_MODIFIERS = [
+  ["ctrlKey", "Ctrl"],
+  ["altKey", "Alt"],
+  ["shiftKey", "Shift"],
+  ["metaKey", "Meta"],
+];
+
+const MODIFIER_LABELS = {
+  Ctrl: () => (IS_MAC ? "Control" : "Ctrl"),
+  Alt: () => (IS_MAC ? "Option" : "Alt"),
+  Shift: () => "Shift",
+  Meta: () => (IS_MAC ? "Command" : "Win"),
+};
+
+// Only codes whose label isn't already derivable by formatCombo's KeyX/DigitX rules.
+const KEY_LABELS = {
+  ArrowUp: "↑",
+  ArrowDown: "↓",
+  ArrowLeft: "←",
+  ArrowRight: "→",
+  Escape: "Esc",
+  Slash: "/",
+  Backslash: "\\",
+  Comma: ",",
+  Period: ".",
+  Semicolon: ";",
+  Quote: "'",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Minus: "-",
+  Equal: "=",
+  Backquote: "`",
+};
+
+function comboFromEvent(event) {
+  const parts = COMBO_MODIFIERS.filter(([property]) => event[property]).map(([, name]) => name);
+  parts.push(event.code);
+  return parts.join("+");
+}
+
+function formatCombo(combo) {
+  const parts = combo.split("+");
+  const code = parts.pop();
+  const labels = parts.map((name) => MODIFIER_LABELS[name]?.() ?? name);
+
+  if (KEY_LABELS[code]) labels.push(KEY_LABELS[code]);
+  else if (code.startsWith("Key")) labels.push(code.slice(3));
+  else if (code.startsWith("Digit")) labels.push(code.slice(5));
+  else labels.push(code);
+
+  return labels.join(" + ");
+}
+
+// A Combo holding neither Alt nor Ctrl types a character, so firing it while
+// the viewer is mid-sentence would both swallow the keystroke and trigger an
+// unrelated action.
+function isTypingTarget(target) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
+}
+
+// The Shortcut Panel's own Combo is deliberately fixed — the panel is the only
+// place a Combo can be reassigned, so losing the key that opens it would be
+// hard to recover from — hence it sits here rather than in a reassignable set.
+const PANEL_COMBO = "Shift+Slash";
+
+// Global Shortcuts fire wherever focus happens to be, the comment textarea
+// included — pausing the stream mid-sentence is precisely what this feature
+// exists for. That makes the preventDefault in initGlobalShortcuts load-bearing
+// rather than cosmetic: it stops macOS inserting the Option character
+// (Option+T types "†"), and it suppresses the browsers' own Alt accelerators
+// (Alt+D focuses the address bar, Alt+F opens the menu, in Chrome, Edge and
+// Firefox alike). Those two are absent from every browser's reserved-key list,
+// so a cancelled keydown really does suppress them.
+const GLOBAL_SHORTCUTS = [
+  // Alt+K, not the Alt+Space you'd expect: on Windows, Alt+Space is swallowed
+  // before the page ever sees it (it's the window system menu) and measurably
+  // opens the browser's own menu instead. K is the key YouTube uses for the
+  // same action and appears in no browser's accelerator table.
+  { id: "playPause", label: "再生 / 一時停止", defaultCombo: "Alt+KeyK" },
+  { id: "focusComment", label: "コメント入力欄にフォーカス", defaultCombo: "Alt+KeyT" },
+  { id: "toggleItems", label: "アイテムパネルの開閉", defaultCombo: "Alt+KeyI" },
+  { id: "fullscreen", label: "全画面表示の切り替え", defaultCombo: "Alt+KeyF" },
+  { id: "mute", label: "ミュート切り替え", defaultCombo: "Alt+KeyM" },
+  { id: "theme", label: "ダークモード切り替え", defaultCombo: "Alt+KeyD" },
+  { id: "readAloud", label: "コメント読み上げの ON / OFF", defaultCombo: "Alt+KeyR" },
+];
+
+// Each action drives the very control a pointer would use, so the aria-label
+// and class bookkeeping every init* function does for its own button stays in
+// that one place and can't drift out of sync with the keyboard path.
+// initPlayerKeyboardShortcuts already works this way.
+const GLOBAL_SHORTCUT_ACTIONS = {
+  playPause: () => document.getElementById("video-playpause-btn")?.click(),
+  focusComment: () => document.getElementById("comment-input")?.focus(),
+  toggleItems: () => document.getElementById("item-toggle-btn")?.click(),
+  fullscreen: () => document.getElementById("video-fullscreen-btn")?.click(),
+  mute: () => document.getElementById("video-mute-btn")?.click(),
+  theme: () => document.getElementById("theme-toggle-btn")?.click(),
+  readAloud: () => document.getElementById("comment-speech-btn")?.click(),
+};
+
+// Only shortcuts that actually work today, so this list never advertises a key
+// that does nothing.
+const PLAYER_SHORTCUTS = [
+  { label: "再生 / 一時停止", combos: ["Space", "Enter"] },
+  { label: "ミュート切り替え", combos: ["KeyM"] },
+  { label: "全画面表示の切り替え", combos: ["KeyF"] },
+  { label: "音量を上げる", combos: ["ArrowUp"] },
+  { label: "音量を下げる", combos: ["ArrowDown"] },
+];
+
+// Combos a Global Shortcut may never take, mapped to whatever already owns
+// them. Player Shortcuts belong in here because a single press would run both
+// handlers — the Player one on #video-area, then the Global one on document as
+// the event bubbles through — clicking the same button twice and undoing
+// itself, which reads as the shortcut being broken rather than taken.
+const RESERVED_COMBOS = new Map([
+  ...PLAYER_SHORTCUTS.flatMap((shortcut) =>
+    shortcut.combos.map((combo) => [combo, `${shortcut.label}（動画エリア選択中）`]),
+  ),
+  [PANEL_COMBO, "ショートカット一覧を開く / 閉じる"],
+]);
+
+const SHORTCUT_STORAGE_KEY = "shortcuts";
+
+// A Combo carrying none of Alt/Ctrl/Meta produces a character, which means it
+// can't fire while the viewer is typing without eating the keystroke. Assigning
+// one is allowed — just warned about, in the panel and on the row itself.
+function comboTypesCharacter(combo) {
+  const modifiers = combo.split("+").slice(0, -1);
+  return !modifiers.some((modifier) => modifier === "Alt" || modifier === "Ctrl" || modifier === "Meta");
+}
+
+// The viewer's own assignments claim their Combos first; the defaults then fill
+// whatever gaps are left, and a default whose Combo is already spoken for
+// leaves that action unassigned rather than taking it back. That only matters
+// when a newly added action ships a default the viewer had already bound
+// elsewhere — and silently overwriting their own choice is the worse outcome.
+function loadShortcutAssignments() {
+  let stored = {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SHORTCUT_STORAGE_KEY) ?? "{}");
+    if (parsed && typeof parsed === "object") stored = parsed;
+  } catch {
+    // Corrupt or hand-edited: fall back to the defaults rather than break the page.
+  }
+
+  const assignments = {};
+  const taken = new Set();
+
+  for (const shortcut of GLOBAL_SHORTCUTS) {
+    if (!(shortcut.id in stored)) continue;
+    const combo = stored[shortcut.id];
+    if (combo === null) {
+      assignments[shortcut.id] = null;
+    } else if (typeof combo === "string" && combo && !RESERVED_COMBOS.has(combo) && !taken.has(combo)) {
+      assignments[shortcut.id] = combo;
+      taken.add(combo);
+    }
+  }
+
+  for (const shortcut of GLOBAL_SHORTCUTS) {
+    if (shortcut.id in assignments) continue;
+    const free = !taken.has(shortcut.defaultCombo);
+    assignments[shortcut.id] = free ? shortcut.defaultCombo : null;
+    if (free) taken.add(shortcut.defaultCombo);
+  }
+
+  return assignments;
+}
+
+const SHORTCUT_ASSIGNMENTS = loadShortcutAssignments();
+
+function saveShortcutAssignments() {
+  try {
+    localStorage.setItem(SHORTCUT_STORAGE_KEY, JSON.stringify(SHORTCUT_ASSIGNMENTS));
+  } catch {
+    // Storage blocked or full (private browsing): the change still takes effect
+    // for this session, it just won't survive a reload.
+  }
+}
+
+// What already owns this Combo, or null when it's free to take.
+function shortcutConflict(combo, exceptId) {
+  const reserved = RESERVED_COMBOS.get(combo);
+  if (reserved) return reserved;
+
+  const clash = GLOBAL_SHORTCUTS.find(
+    (shortcut) => shortcut.id !== exceptId && SHORTCUT_ASSIGNMENTS[shortcut.id] === combo,
+  );
+  return clash ? clash.label : null;
+}
+
+// Rebuilt on every render rather than held as a constant, since a row's Combo
+// and its warning both change as the viewer reassigns keys.
+function shortcutSections() {
+  return [
+    {
+      title: "全体",
+      note: "フォーカスがどこにあっても有効です。",
+      rows: [
+        ...GLOBAL_SHORTCUTS.map((shortcut) => {
+          const combo = SHORTCUT_ASSIGNMENTS[shortcut.id];
+          return {
+            id: shortcut.id,
+            label: shortcut.label,
+            combos: combo ? [combo] : [],
+            note:
+              combo && comboTypesCharacter(combo)
+                ? "Alt も Ctrl も含まないため、コメント入力中は効きません。"
+                : null,
+            editable: true,
+          };
+        }),
+        // display overrides the derived "Shift + /", since a viewer thinks of
+        // this key as "?" — the character printed on it — not as its two parts.
+        {
+          label: "ショートカット一覧を開く / 閉じる",
+          combos: [PANEL_COMBO],
+          display: ["?"],
+          note: "文字を打ち込むキーなので、コメント入力中だけは効きません。このキーは変更できません。",
+        },
+      ],
+    },
+    {
+      title: "動画エリア選択中のみ",
+      note: "動画エリアをクリック、または Tab キーで選択している間だけ有効です。これらのキーは変更できません。",
+      rows: PLAYER_SHORTCUTS,
+    },
+  ];
+}
+
+function initShortcutPanel() {
+  const panel = document.getElementById("shortcut-panel");
+  const body = document.getElementById("shortcut-panel-body");
+  const message = document.getElementById("shortcut-panel-message");
+  const resetButton = document.getElementById("shortcut-reset-btn");
+  const openButton = document.getElementById("shortcut-help-btn");
+  const closeButton = document.getElementById("shortcut-panel-close-btn");
+  if (!panel || !body || !openButton) return;
+
+  // Without <dialog> support the panel isn't hidden by the UA's own styles, so
+  // it would render inline and permanently at the foot of the page. Dropping
+  // the feature entirely beats that.
+  if (typeof panel.showModal !== "function") {
+    panel.hidden = true;
+    openButton.hidden = true;
+    return;
+  }
+
+  // Which Global Shortcut is currently waiting for its new key, or null.
+  let capturingId = null;
+
+  // Feedback about one row is rendered inside that row rather than down in the
+  // footer: a refusal shown a whole table's height away from the key you just
+  // pressed is easy to miss entirely. Only panel-wide messages (the reset) have
+  // no row to belong to, and those fall back to the footer.
+  let feedback = null;
+
+  const setFeedback = (text, tone, id = null) => {
+    feedback = text ? { text, tone, id } : null;
+  };
+
+  const renderFooterMessage = () => {
+    if (!message) return;
+    message.textContent = feedback?.text ?? "";
+    message.hidden = !feedback;
+    // A row-scoped message is already visible up in its row; this copy stays
+    // only to carry the announcement, because an element inserted with its
+    // text already in place never fires aria-live.
+    message.classList.toggle("is-visually-hidden", Boolean(feedback?.id));
+    message.classList.toggle("is-error", feedback?.tone === "error");
+    message.classList.toggle("is-warning", feedback?.tone === "warning");
+  };
+
+  const render = () => {
+    body.textContent = "";
+
+    for (const section of shortcutSections()) {
+      const sectionEl = document.createElement("section");
+      sectionEl.className = "shortcut-section";
+
+      const title = document.createElement("h3");
+      title.className = "shortcut-section-title";
+      title.textContent = section.title;
+      sectionEl.appendChild(title);
+
+      if (section.note) {
+        const note = document.createElement("p");
+        note.className = "shortcut-section-note";
+        note.textContent = section.note;
+        sectionEl.appendChild(note);
+      }
+
+      const table = document.createElement("table");
+      table.className = "shortcut-table";
+      const tbody = document.createElement("tbody");
+
+      for (const row of section.rows) {
+        const tr = document.createElement("tr");
+
+        const th = document.createElement("th");
+        th.scope = "row";
+        th.textContent = row.label;
+        if (row.note) {
+          const note = document.createElement("small");
+          note.className = "shortcut-row-note";
+          note.textContent = row.note;
+          th.appendChild(note);
+        }
+        if (row.id && feedback?.id === row.id) {
+          tr.classList.add("is-flagged");
+          if (feedback.tone) tr.classList.add(`is-${feedback.tone}`);
+          const rowMessage = document.createElement("p");
+          rowMessage.className = "shortcut-row-message";
+          rowMessage.textContent = feedback.text;
+          th.appendChild(rowMessage);
+        }
+        tr.appendChild(th);
+
+        const td = document.createElement("td");
+        if (row.id && row.id === capturingId) {
+          const waiting = document.createElement("span");
+          waiting.className = "shortcut-capturing";
+          waiting.textContent = "キーを押してください…";
+          td.appendChild(waiting);
+        } else if (row.combos.length === 0) {
+          const none = document.createElement("span");
+          none.className = "shortcut-unassigned";
+          none.textContent = "未割り当て";
+          td.appendChild(none);
+        } else {
+          row.combos.forEach((combo, index) => {
+            if (index > 0) {
+              const separator = document.createElement("span");
+              separator.className = "shortcut-combo-sep";
+              separator.textContent = "/";
+              td.appendChild(separator);
+            }
+            const key = document.createElement("kbd");
+            key.className = "shortcut-combo";
+            key.textContent = row.display?.[index] ?? formatCombo(combo);
+            td.appendChild(key);
+          });
+        }
+        tr.appendChild(td);
+
+        const actions = document.createElement("td");
+        actions.className = "shortcut-actions";
+        if (row.editable) {
+          const change = document.createElement("button");
+          change.type = "button";
+          change.className = "shortcut-action-btn";
+          change.textContent = capturingId === row.id ? "取消" : "変更";
+          change.addEventListener("click", () => {
+            if (capturingId === row.id) {
+              setFeedback(null);
+              stopCapture();
+            } else {
+              startCapture(row.id);
+            }
+          });
+          actions.appendChild(change);
+
+          if (row.combos.length > 0) {
+            const clear = document.createElement("button");
+            clear.type = "button";
+            clear.className = "shortcut-action-btn";
+            clear.textContent = "解除";
+            clear.addEventListener("click", () => {
+              SHORTCUT_ASSIGNMENTS[row.id] = null;
+              saveShortcutAssignments();
+              setFeedback(`「${row.label}」のキーを解除しました。`, null, row.id);
+              render();
+            });
+            actions.appendChild(clear);
+          }
+        }
+        tr.appendChild(actions);
+
+        tbody.appendChild(tr);
+      }
+
+      table.appendChild(tbody);
+      sectionEl.appendChild(table);
+      body.appendChild(sectionEl);
+    }
+
+    renderFooterMessage();
+  };
+
+  // Bound on window in the capture phase, so it runs ahead of both the Global
+  // Shortcut listener on document and the browser's own Alt accelerators —
+  // otherwise pressing Alt+D to assign it would focus the address bar instead.
+  const onCaptureKey = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // A modifier on its own is the viewer still reaching for the combination.
+    if (/^(Alt|Control|Shift|Meta)(Left|Right)$/.test(event.code)) return;
+
+    const id = capturingId;
+
+    if (event.code === "Escape") {
+      setFeedback("変更を取り消しました。", null, id);
+      stopCapture();
+      return;
+    }
+
+    const combo = comboFromEvent(event);
+    const owner = shortcutConflict(combo, id);
+
+    if (owner) {
+      setFeedback(`${formatCombo(combo)} は「${owner}」に割り当て済みです。変更していません。`, "error", id);
+      stopCapture();
+      return;
+    }
+
+    SHORTCUT_ASSIGNMENTS[id] = combo;
+    saveShortcutAssignments();
+    // A refusal and a merely-inadvisable choice both land here, so the tone has
+    // to carry the difference: one says nothing changed, the other says it did.
+    setFeedback(
+      comboTypesCharacter(combo)
+        ? `${formatCombo(combo)} にしました。Alt か Ctrl を含めないと、コメント入力中は効きません。`
+        : `${formatCombo(combo)} にしました。`,
+      comboTypesCharacter(combo) ? "warning" : null,
+      id,
+    );
+    stopCapture();
+  };
+
+  function startCapture(id) {
+    capturingId = id;
+    setFeedback("Esc で取り消します。", null, id);
+    window.addEventListener("keydown", onCaptureKey, true);
+    render();
+  }
+
+  function stopCapture() {
+    capturingId = null;
+    window.removeEventListener("keydown", onCaptureKey, true);
+    render();
+  }
+
+  const open = () => {
+    if (!panel.open) {
+      setFeedback(null);
+      render();
+      panel.showModal();
+    }
+  };
+  const close = () => {
+    if (!panel.open) return;
+    if (capturingId) stopCapture();
+    panel.close();
+  };
+
+  // Esc during a capture cancels the capture, not the whole panel. The capture
+  // listener above already swallows that keydown, but a <dialog> can also be
+  // dismissed by the UA without one, so the cancel event is guarded too.
+  panel.addEventListener("cancel", (event) => {
+    if (capturingId) event.preventDefault();
+  });
+
+  resetButton?.addEventListener("click", () => {
+    for (const shortcut of GLOBAL_SHORTCUTS) SHORTCUT_ASSIGNMENTS[shortcut.id] = shortcut.defaultCombo;
+    saveShortcutAssignments();
+    setFeedback("すべてデフォルトに戻しました。", null);
+    render();
+  });
+
+  render();
+
+  openButton.addEventListener("click", () => (panel.open ? close() : open()));
+  closeButton?.addEventListener("click", close);
+
+  // showModal() sizes the dialog's own box to fill the viewport in some
+  // engines, so a click that lands on the element itself rather than on any of
+  // its children is a click on the backdrop.
+  panel.addEventListener("click", (event) => {
+    if (event.target === panel) close();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (comboFromEvent(event) !== PANEL_COMBO) return;
+    // Once the panel is open its own content holds focus, so this only ever
+    // guards the "?" that opens it, never the one that closes it.
+    if (isTypingTarget(event.target)) return;
+    event.preventDefault();
+    if (panel.open) close();
+    else open();
+  });
+}
+
+// Deliberately a second, independent listener rather than an extension of
+// initPlayerKeyboardShortcuts: that one is bound to #video-area and fires only
+// while focus is inside it, which is the opposite of what these need.
+function initGlobalShortcuts() {
+  document.addEventListener("keydown", (event) => {
+    const combo = comboFromEvent(event);
+    const shortcut = GLOBAL_SHORTCUTS.find((candidate) => SHORTCUT_ASSIGNMENTS[candidate.id] === combo);
+    if (!shortcut) return;
+    event.preventDefault();
+    GLOBAL_SHORTCUT_ACTIONS[shortcut.id]?.();
   });
 }
 
@@ -389,7 +915,72 @@ function initBufferingIndicator(video) {
   });
 }
 
-function initCommentStream() {
+// A busy feed enqueues faster than speech drains, so arrivals past this depth
+// are dropped rather than queued. Dropping keeps what is spoken current and
+// lets each utterance finish; cancelling the one in progress on every arrival
+// would mean never hearing a single comment through to the end.
+const SPEECH_MAX_QUEUE = 3;
+// Comments run to 200 characters, which is roughly 20 seconds of Japanese
+// speech — long enough that one comment alone would fill the queue behind it.
+const SPEECH_MAX_CHARS = 50;
+
+// Returns the function initCommentStream calls for each arrival, or null when
+// the browser has no SpeechSynthesis (the button is then hidden rather than
+// left as a control that does nothing).
+function initCommentSpeech() {
+  const button = document.getElementById("comment-speech-btn");
+  if (!button) return null;
+  if (!("speechSynthesis" in window)) {
+    button.hidden = true;
+    return null;
+  }
+
+  // Deliberately not persisted, unlike the theme: a page that starts talking
+  // on load, before the viewer has touched anything, is startling in a way a
+  // remembered color scheme never is.
+  let enabled = false;
+  // speechSynthesis.pending only says "something is waiting", not how much, so
+  // the depth is counted here instead.
+  let queued = 0;
+
+  const sync = () => {
+    button.classList.toggle("is-on", enabled);
+    button.setAttribute("aria-pressed", String(enabled));
+    button.setAttribute("aria-label", enabled ? "コメントの読み上げを止める" : "コメントを読み上げる");
+  };
+
+  button.addEventListener("click", () => {
+    enabled = !enabled;
+    if (!enabled) {
+      // Cancel outright rather than merely stop enqueuing — an off switch that
+      // leaves it talking through three more comments isn't an off switch.
+      window.speechSynthesis.cancel();
+      queued = 0;
+    }
+    sync();
+  });
+
+  sync();
+
+  return (text) => {
+    if (!enabled || !text || queued >= SPEECH_MAX_QUEUE) return;
+
+    const utterance = new SpeechSynthesisUtterance(text.slice(0, SPEECH_MAX_CHARS));
+    utterance.lang = "ja-JP";
+    // cancel() also settles pending utterances, so queued is floored at 0 to
+    // absorb the reset above racing with these.
+    const settle = () => {
+      queued = Math.max(0, queued - 1);
+    };
+    utterance.addEventListener("end", settle);
+    utterance.addEventListener("error", settle);
+
+    queued += 1;
+    window.speechSynthesis.speak(utterance);
+  };
+}
+
+function initCommentStream(speak) {
   const commentArea = document.getElementById("comment-area");
   const commentPanel = document.getElementById("comment-panel");
   const scrollWrap = document.getElementById("comment-scroll-wrap");
@@ -547,6 +1138,10 @@ function initCommentStream() {
       icon.title = data.item.name;
       icon.className = data.text ? "comment-item-icon-small" : "comment-item-icon";
 
+      // Also what gets read aloud for an item-only Comment, so the sentence
+      // heard is the same one shown rather than a second phrasing of it.
+      const sentItemText = `${data.item.name}を送りました。`;
+
       if (data.text) {
         icon.alt = "";
         entry.appendChild(icon);
@@ -564,17 +1159,22 @@ function initCommentStream() {
 
         const sentText = document.createElement("span");
         sentText.className = "comment-item-sent-text";
-        sentText.textContent = `${data.item.name}を送りました。`;
+        sentText.textContent = sentItemText;
         entry.appendChild(sentText);
       }
 
       pushTicker(data.item, data.id);
       flashPanel(tier);
+      // An Item carrying text reads as that text alone: the item's name is
+      // already conveyed by the sound of the arrival, and prefixing every
+      // comment with it would bury the part the sender actually wrote.
+      speak?.(data.text || sentItemText);
     } else if (data.text) {
       const text = document.createElement("span");
       text.className = "comment-text";
       text.textContent = data.text;
       entry.appendChild(text);
+      speak?.(data.text);
     }
 
     if (scrollWrap.hidden) {
@@ -617,7 +1217,9 @@ function initCommentPanel() {
   if (!header || !toggleButton || !scrollWrap || !commentArea) return;
 
   header.addEventListener("click", (event) => {
-    if (event.target.closest(".ticker-item")) return;
+    // Controls that live in the header do their own thing; only a click on the
+    // bare header collapses the feed.
+    if (event.target.closest(".ticker-item, .comment-speech-btn")) return;
 
     scrollWrap.hidden = !scrollWrap.hidden;
     toggleButton.setAttribute("aria-expanded", String(!scrollWrap.hidden));
@@ -1110,7 +1712,7 @@ function initLayoutFit() {
 }
 
 const switchChannel = initPlayer();
-initCommentStream();
+initCommentStream(initCommentSpeech());
 initCommentPanel();
 initChannelList(switchChannel);
 initItemList();
@@ -1118,4 +1720,6 @@ initCommentSend();
 initSelectedItemChip();
 initSelectedItemPreview();
 initTheme();
+initShortcutPanel();
+initGlobalShortcuts();
 initLayoutFit();

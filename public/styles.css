@@ -669,6 +669,47 @@ button {
   color: var(--color-text);
 }
 
+/* Sits inside .comment-header, which collapses the feed when clicked — the
+   handler there excludes this button (as it already does the ticker items). */
+.comment-speech-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text);
+  opacity: 0.55;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    opacity 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.comment-speech-btn:hover {
+  opacity: 1;
+  background: var(--color-muted-surface);
+}
+
+.comment-speech-btn.is-on {
+  color: var(--color-accent);
+  opacity: 1;
+}
+
+.comment-speech-btn .icon-speech-on {
+  display: none;
+}
+
+.comment-speech-btn.is-on .icon-speech-on {
+  display: block;
+}
+
+.comment-speech-btn.is-on .icon-speech-off {
+  display: none;
+}
+
 .comment-unread-badge {
   flex: 0 0 auto;
   background: var(--color-accent);
@@ -1472,4 +1513,359 @@ button {
     width: min(96vw, 1600px);
     max-height: 60vh;
   }
+}
+
+.page-header-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* .page-header's background is a fixed dark gray regardless of theme (see
+   there), so this button's colors are literals rather than --color-* tokens,
+   same as the theme-switch icons beside it. */
+.header-icon-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0.3rem;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: #c8ccd0;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.header-icon-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.shortcut-panel {
+  width: min(92vw, 560px);
+  max-height: min(80vh, 640px);
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 8px 24px var(--shadow-strong);
+  overflow: hidden;
+  transition: background-color 0.15s ease;
+}
+
+/* A closed <dialog> is display:none, so the flex column has to be switched on
+   by [open] rather than declared above — otherwise it would override that. */
+.shortcut-panel[open] {
+  display: flex;
+  flex-direction: column;
+  animation: shortcut-panel-in 0.18s ease-out;
+}
+
+.shortcut-panel::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+@keyframes shortcut-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shortcut-panel[open] {
+    animation: none;
+  }
+}
+
+.shortcut-panel-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border-soft);
+  font-weight: 600;
+  transition: border-color 0.15s ease;
+}
+
+.shortcut-panel-header h2 {
+  margin: 0;
+  font: inherit;
+}
+
+.shortcut-panel-close-btn {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 1.1em;
+  line-height: 1;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--color-text);
+  padding: 0.2rem 0.4rem;
+  transition: color 0.15s ease;
+}
+
+.shortcut-panel-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.shortcut-section + .shortcut-section {
+  margin-top: 1.25rem;
+}
+
+.shortcut-section-title {
+  margin: 0 0 0.25rem;
+  font: inherit;
+  font-size: 0.85em;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+.shortcut-section-note {
+  margin: 0 0 0.5rem;
+  font-size: 0.78em;
+  line-height: 1.5;
+  opacity: 0.65;
+}
+
+.shortcut-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.shortcut-table th,
+.shortcut-table td {
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--color-border-soft);
+  transition: border-color 0.15s ease;
+}
+
+.shortcut-table tr:last-child th,
+.shortcut-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* The action name takes all the slack so the keycap column stays hugged to
+   the right edge, however long the labels get. */
+.shortcut-table th {
+  font: inherit;
+  font-weight: 400;
+  width: 100%;
+}
+
+.shortcut-table td {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.shortcut-combo {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--color-muted-surface);
+  font: inherit;
+  font-size: 0.85em;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+/* Flags the rows that don't hold to their section's rule — currently the "?"
+   that opens this panel, which types a character and so can't fire while the
+   viewer is mid-sentence. */
+.shortcut-row-note {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.75em;
+  line-height: 1.4;
+  opacity: 0.6;
+}
+
+/* Separates the two interchangeable Combos an action can have (play/pause is
+   both Space and Enter). */
+.shortcut-combo-sep {
+  padding: 0 0.3rem;
+  font-size: 0.8em;
+  opacity: 0.5;
+}
+
+/* Sits directly under the action's own label, beside the key that was just
+   pressed — a refusal shown down in the footer is a table's height away from
+   where the viewer is looking and gets missed. */
+.shortcut-row-message {
+  margin: 0.25rem 0 0;
+  font-size: 0.78em;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
+.shortcut-table tr.is-error .shortcut-row-message {
+  color: var(--color-error);
+  opacity: 1;
+}
+
+.shortcut-table tr.is-warning .shortcut-row-message {
+  color: #a16207;
+  opacity: 1;
+}
+
+:root[data-theme="dark"] .shortcut-table tr.is-warning .shortcut-row-message {
+  color: #f1ce5e;
+}
+
+/* Only a nudge toward the message beside the key — proximity is what actually
+   fixes the "didn't notice it" problem, this just draws the eye there. */
+.shortcut-table tr.is-flagged {
+  --row-flash: rgba(127, 127, 127, 0.28);
+  animation: shortcut-row-flash 1s ease-out;
+}
+
+.shortcut-table tr.is-flagged.is-error {
+  --row-flash: rgba(214, 69, 69, 0.3);
+}
+
+.shortcut-table tr.is-flagged.is-warning {
+  --row-flash: rgba(234, 179, 8, 0.32);
+}
+
+@keyframes shortcut-row-flash {
+  from {
+    background: var(--row-flash);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shortcut-table tr.is-flagged {
+    animation: none;
+    background: var(--row-flash);
+  }
+}
+
+.shortcut-unassigned,
+.shortcut-capturing {
+  font-size: 0.85em;
+  opacity: 0.6;
+}
+
+.shortcut-capturing {
+  color: var(--color-accent);
+  opacity: 1;
+}
+
+.shortcut-actions {
+  padding-left: 0;
+  white-space: nowrap;
+}
+
+.shortcut-action-btn {
+  font: inherit;
+  font-size: 0.78em;
+  padding: 0.2rem 0.5rem;
+  margin-left: 0.3rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.shortcut-action-btn:hover {
+  background: var(--color-muted-surface-hover);
+}
+
+.shortcut-panel-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--color-border-soft);
+  transition: border-color 0.15s ease;
+}
+
+/* One message area for two different outcomes, so the tone has to carry the
+   difference: .is-error means the assignment was refused and nothing changed,
+   .is-warning means it was accepted but comes with a caveat. */
+.shortcut-panel-message {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 0.78em;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
+.shortcut-panel-message.is-error {
+  color: var(--color-error);
+  opacity: 1;
+}
+
+.shortcut-panel-message.is-warning {
+  color: #a16207;
+  opacity: 1;
+}
+
+/* A row-scoped message is shown in its row; this copy stays in the DOM purely
+   as the aria-live region, so it must be reachable by a screen reader while
+   invisible — display:none would silence it. */
+.shortcut-panel-message.is-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+:root[data-theme="dark"] .shortcut-panel-message.is-warning {
+  color: #f1ce5e;
+}
+
+/* margin-left keeps it hard right even when the message beside it is hidden or
+   pulled out of flow by .is-visually-hidden. */
+.shortcut-reset-btn {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font: inherit;
+  font-size: 0.78em;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.shortcut-reset-btn:hover {
+  background: var(--color-muted-surface-hover);
 }
