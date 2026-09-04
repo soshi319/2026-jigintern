@@ -300,6 +300,12 @@ function initPlayerKeyboardShortcuts(video, playFromLive) {
   if (!area) return;
 
   area.addEventListener("keydown", (event) => {
+    // These are bare-key shortcuts, so a held modifier means the press belongs
+    // to something else. Without this, Alt+M inside the video area would match
+    // "m" here AND the Global Shortcut on document as the event bubbles up:
+    // two muteBtn.click() calls for one press, toggling mute straight back off.
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+
     switch (event.key) {
       case " ":
       case "Enter":
@@ -410,16 +416,57 @@ function isTypingTarget(target) {
 // hard to recover from — hence it sits here rather than in a reassignable set.
 const PANEL_COMBO = "Shift+Slash";
 
-// Only shortcuts that actually work today. Global Shortcuts (Alt+…) get their
-// own section here once they exist, so this list never advertises a key that
-// does nothing.
+// Global Shortcuts fire wherever focus happens to be, the comment textarea
+// included — pausing the stream mid-sentence is precisely what this feature
+// exists for. That makes the preventDefault in initGlobalShortcuts load-bearing
+// rather than cosmetic: it stops macOS inserting the Option character
+// (Option+T types "†"), and it suppresses the browsers' own Alt accelerators
+// (Alt+D focuses the address bar, Alt+F opens the menu, in Chrome, Edge and
+// Firefox alike). Those two are absent from every browser's reserved-key list,
+// so a cancelled keydown really does suppress them.
+const GLOBAL_SHORTCUTS = [
+  // Alt+K, not the Alt+Space you'd expect: on Windows, Alt+Space is swallowed
+  // before the page ever sees it (it's the window system menu) and measurably
+  // opens the browser's own menu instead. K is the key YouTube uses for the
+  // same action and appears in no browser's accelerator table.
+  { id: "playPause", label: "再生 / 一時停止", defaultCombo: "Alt+KeyK" },
+  { id: "focusComment", label: "コメント入力欄にフォーカス", defaultCombo: "Alt+KeyT" },
+  { id: "toggleItems", label: "アイテムパネルの開閉", defaultCombo: "Alt+KeyI" },
+  { id: "fullscreen", label: "全画面表示の切り替え", defaultCombo: "Alt+KeyF" },
+  { id: "mute", label: "ミュート切り替え", defaultCombo: "Alt+KeyM" },
+  { id: "theme", label: "ダークモード切り替え", defaultCombo: "Alt+KeyD" },
+];
+
+// Each action drives the very control a pointer would use, so the aria-label
+// and class bookkeeping every init* function does for its own button stays in
+// that one place and can't drift out of sync with the keyboard path.
+// initPlayerKeyboardShortcuts already works this way.
+const GLOBAL_SHORTCUT_ACTIONS = {
+  playPause: () => document.getElementById("video-playpause-btn")?.click(),
+  focusComment: () => document.getElementById("comment-input")?.focus(),
+  toggleItems: () => document.getElementById("item-toggle-btn")?.click(),
+  fullscreen: () => document.getElementById("video-fullscreen-btn")?.click(),
+  mute: () => document.getElementById("video-mute-btn")?.click(),
+  theme: () => document.getElementById("theme-toggle-btn")?.click(),
+};
+
+// Only shortcuts that actually work today, so this list never advertises a key
+// that does nothing.
 const SHORTCUT_SECTIONS = [
   {
     title: "全体",
-    note: null,
-    // display overrides the derived "Shift + /", since a viewer thinks of this
-    // key as "?" — the character printed on it — not as its two components.
-    rows: [{ label: "ショートカット一覧を開く / 閉じる", combos: [PANEL_COMBO], display: ["?"] }],
+    note: "フォーカスがどこにあっても有効です。",
+    rows: [
+      ...GLOBAL_SHORTCUTS.map((shortcut) => ({ label: shortcut.label, combos: [shortcut.defaultCombo] })),
+      // display overrides the derived "Shift + /", since a viewer thinks of
+      // this key as "?" — the character printed on it — not as its two parts.
+      {
+        label: "ショートカット一覧を開く / 閉じる",
+        combos: [PANEL_COMBO],
+        display: ["?"],
+        note: "文字を打ち込むキーなので、コメント入力中だけは効きません。",
+      },
+    ],
   },
   {
     title: "動画エリア選択中のみ",
@@ -476,6 +523,12 @@ function initShortcutPanel() {
       const th = document.createElement("th");
       th.scope = "row";
       th.textContent = row.label;
+      if (row.note) {
+        const note = document.createElement("small");
+        note.className = "shortcut-row-note";
+        note.textContent = row.note;
+        th.appendChild(note);
+      }
       tr.appendChild(th);
 
       const td = document.createElement("td");
@@ -526,6 +579,19 @@ function initShortcutPanel() {
     event.preventDefault();
     if (panel.open) close();
     else open();
+  });
+}
+
+// Deliberately a second, independent listener rather than an extension of
+// initPlayerKeyboardShortcuts: that one is bound to #video-area and fires only
+// while focus is inside it, which is the opposite of what these need.
+function initGlobalShortcuts() {
+  document.addEventListener("keydown", (event) => {
+    const combo = comboFromEvent(event);
+    const shortcut = GLOBAL_SHORTCUTS.find((candidate) => candidate.defaultCombo === combo);
+    if (!shortcut) return;
+    event.preventDefault();
+    GLOBAL_SHORTCUT_ACTIONS[shortcut.id]?.();
   });
 }
 
@@ -1315,4 +1381,5 @@ initSelectedItemChip();
 initSelectedItemPreview();
 initTheme();
 initShortcutPanel();
+initGlobalShortcuts();
 initLayoutFit();

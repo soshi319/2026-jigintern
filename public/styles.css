@@ -1648,6 +1648,17 @@ button {
     border-color 0.15s ease;
 }
 
+/* Flags the rows that don't hold to their section's rule — currently the "?"
+   that opens this panel, which types a character and so can't fire while the
+   viewer is mid-sentence. */
+.shortcut-row-note {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.75em;
+  line-height: 1.4;
+  opacity: 0.6;
+}
+
 /* Separates the two interchangeable Combos an action can have (play/pause is
    both Space and Enter). */
 .shortcut-combo-sep {
