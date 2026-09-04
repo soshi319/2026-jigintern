@@ -4,14 +4,26 @@ const STREAM_URL = "https://intern-hls-server.tomaton.workers.dev/stream.m3u8";
 const COMMENT_STREAM_URL = "https://intern-comment-server.intern-comment-server.deno.net/events";
 const COMMENT_POST_URL = "https://intern-comment-server.intern-comment-server.deno.net/messages";
 const ITEMS_URL = "https://intern-comment-server.intern-comment-server.deno.net/items";
+const HLS_ORIGIN = new URL(STREAM_URL).origin;
+const CHANNELS_URL = `${HLS_ORIGIN}/channels.json`;
 
 // cost is one of 10 / 50 / 150 / 400 / 1000 across the whole catalog — five tiers, cheap (cool) to expensive (warm).
+// bgItemOnly (light mode) is a solid color matching what rgba(rgb, 0.26) used to look like composited
+// over the light surface — picked via a color picker against that old translucent rendering, then
+// hardcoded so the look doesn't drift if the surface color ever changes. It's the fill for both the
+// item-only Comment and the outer frame of an item-with-text Comment (see CONTEXT.md's Comment entry) —
+// both read as "the Item's usual color," with only the nested text bubble in the latter breaking from it.
+// Dark mode uses `rgb` itself (full saturation) for that same fill instead — favoring a strongly colored
+// Item part over legibility of the item-only sentence against it.
+// bgItemWithTextDark — `rgb` blended ~35% toward white — is the Item Ticker's resting (non-hover) tone;
+// blending toward white less aggressively than the light-mode set keeps it standing out against a
+// near-black surface instead of washing out.
 const COST_TIERS = [
-  { max: 10, rgb: "56, 189, 248", text: "#0369a1", flashAlpha: 0.25 },
-  { max: 50, rgb: "34, 197, 94", text: "#15803d", flashAlpha: 0.32 },
-  { max: 150, rgb: "234, 179, 8", text: "#a16207", flashAlpha: 0.4 },
-  { max: 400, rgb: "249, 115, 22", text: "#c2410c", flashAlpha: 0.48 },
-  { max: 1000, rgb: "236, 72, 153", text: "#be185d", flashAlpha: 0.58 },
+  { max: 10, rgb: "56, 189, 248", text: "#0369a1", flashAlpha: 0.25, bgItemOnly: "#CBEEFD", bgItemWithTextDark: "#7ED4FA" },
+  { max: 50, rgb: "34, 197, 94", text: "#15803d", flashAlpha: 0.32, bgItemOnly: "#C6F0D5", bgItemWithTextDark: "#6FD996" },
+  { max: 150, rgb: "234, 179, 8", text: "#a16207", flashAlpha: 0.4, bgItemOnly: "#FAEBBF", bgItemWithTextDark: "#F1CE5E" },
+  { max: 400, rgb: "249, 115, 22", text: "#c2410c", flashAlpha: 0.48, bgItemOnly: "#FDDBC3", bgItemWithTextDark: "#FBA468" },
+  { max: 1000, rgb: "236, 72, 153", text: "#be185d", flashAlpha: 0.58, bgItemOnly: "#FAD0E5", bgItemWithTextDark: "#F388BD" },
 ];
 
 function tierForCost(cost) {
@@ -28,10 +40,17 @@ function tickerDurationForCost(cost) {
 
 function initPlayer() {
   const video = document.getElementById("player");
-  if (!video) return;
+  const playOverlay = document.getElementById("video-play-overlay");
+  if (!video) return null;
+
+  let hls = null;
 
   if (Hls.isSupported()) {
-    const hls = new Hls();
+    // hls.js defaults to targeting a position 3 segments behind the
+    // playlist's true edge, as a stall-avoidance buffer. Lowered here so
+    // playback stays closer to the real live edge, at the cost of being more
+    // likely to briefly buffer right after a seek/start.
+    hls = new Hls({ liveSyncDurationCount: 1 });
     hls.loadSource(STREAM_URL);
     hls.attachMedia(video);
     hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -56,7 +75,318 @@ function initPlayer() {
         textContent: "お使いのブラウザはこの配信の再生に対応していません。",
       }),
     );
+    if (playOverlay) playOverlay.hidden = true;
+    return null;
   }
+
+  if (playOverlay) {
+    // Mirrors the video's own play/pause state rather than a one-shot "first
+    // play" prompt, so pausing (however it happens — the overlay, the native
+    // controls, a keyboard shortcut) always brings the big center button back.
+    playOverlay.addEventListener("click", () => playFromLive());
+    video.addEventListener("play", () => {
+      playOverlay.hidden = true;
+    });
+    video.addEventListener("pause", () => {
+      playOverlay.hidden = false;
+    });
+  }
+
+  // hls.js branch: hls.liveSyncPosition is the edge hls.js itself targets
+  // (accounts for its own live-sync-duration config above). Native-Safari
+  // HLS has no hls.js instance at all, so that branch falls back to the end
+  // of the seekable range, the only edge signal a plain <video> exposes.
+  const getLiveEdge = () => {
+    if (hls && typeof hls.liveSyncPosition === "number") return hls.liveSyncPosition;
+    if (video.seekable && video.seekable.length > 0) {
+      return video.seekable.end(video.seekable.length - 1);
+    }
+    return null;
+  };
+
+  // Resuming playback always jumps to the live edge first. Without this,
+  // clicking play again after a pause just resumes from wherever the video
+  // was paused — for a live stream that spot only gets staler the longer
+  // it's paused, and may already have fallen out of the buffer entirely.
+  const playFromLive = () => {
+    const edge = getLiveEdge();
+    if (edge != null) video.currentTime = edge;
+    // A channel switch (or another quick play/pause) can supersede this
+    // play() with a new load before it resolves, rejecting it with an
+    // AbortError — expected, not an error worth surfacing.
+    video.play().catch(() => {});
+  };
+
+  initBufferingIndicator(video);
+  initPictureInPicture(video);
+  initPlayPauseControl(video, playFromLive);
+  initVolumeControl(video);
+  initFullscreenControl();
+  initControlsBarVisibility(video);
+  initPlayerKeyboardShortcuts(video, playFromLive);
+
+  // Switches to a different channel's playlist on the same <video>/hls.js
+  // instance, rather than tearing down and re-running initPlayer — keeps
+  // volume, fullscreen, PiP, etc. untouched across the switch. Playback only
+  // resumes automatically if it was already playing (a deliberate channel
+  // change while watching, not the page's own autoplay-on-load).
+  const switchChannel = (url) => {
+    const wasPlaying = !video.paused;
+    if (hls) {
+      hls.loadSource(url);
+      if (wasPlaying) {
+        hls.once(Hls.Events.MANIFEST_PARSED, () => playFromLive());
+      }
+    } else {
+      video.src = url;
+      video.load();
+      if (wasPlaying) playFromLive();
+    }
+  };
+
+  return switchChannel;
+}
+
+function initPlayPauseControl(video, playFromLive) {
+  const btn = document.getElementById("video-playpause-btn");
+  if (!btn) return;
+
+  btn.addEventListener("click", () => {
+    if (video.paused) playFromLive();
+    else video.pause();
+  });
+
+  video.addEventListener("play", () => {
+    btn.classList.add("is-playing");
+    btn.setAttribute("aria-label", "一時停止");
+  });
+  video.addEventListener("pause", () => {
+    btn.classList.remove("is-playing");
+    btn.setAttribute("aria-label", "再生");
+  });
+}
+
+function initVolumeControl(video) {
+  const muteBtn = document.getElementById("video-mute-btn");
+  const slider = document.getElementById("video-volume-slider");
+  if (!muteBtn || !slider) return;
+
+  const sync = () => {
+    const effectivelyMuted = video.muted || video.volume === 0;
+    const value = effectivelyMuted ? 0 : video.volume;
+    slider.value = value;
+    slider.style.setProperty("--volume-pct", `${value * 100}%`);
+    muteBtn.classList.toggle("is-muted", effectivelyMuted);
+    muteBtn.setAttribute("aria-label", effectivelyMuted ? "ミュート解除" : "ミュート");
+  };
+
+  muteBtn.addEventListener("click", () => {
+    video.muted = !video.muted;
+    // Unmuting a video whose volume was dragged to 0 would otherwise stay silent.
+    if (!video.muted && video.volume === 0) video.volume = 1;
+    sync();
+  });
+
+  slider.addEventListener("input", () => {
+    video.volume = Number(slider.value);
+    video.muted = video.volume === 0;
+    sync();
+  });
+
+  video.addEventListener("volumechange", sync);
+  sync();
+}
+
+function initFullscreenControl() {
+  const area = document.getElementById("video-area");
+  const btn = document.getElementById("video-fullscreen-btn");
+  if (!area || !btn) return;
+
+  if (!document.fullscreenEnabled) {
+    btn.hidden = true;
+    return;
+  }
+
+  btn.addEventListener("click", () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      // Fullscreening the container (not the bare <video>) keeps this whole
+      // custom control bar — and the live badge, PiP button, etc. — usable
+      // while fullscreen, instead of handing the OS a raw video surface.
+      area.requestFullscreen().catch(() => {});
+    }
+  });
+
+  document.addEventListener("fullscreenchange", () => {
+    const isFullscreen = document.fullscreenElement === area;
+    btn.classList.toggle("is-fullscreen", isFullscreen);
+    btn.setAttribute("aria-label", isFullscreen ? "全画面表示を終了" : "全画面表示");
+  });
+}
+
+// Auto-hides the bottom control bar after inactivity, matching the "controls
+// fade away while watching" convention of native video players. Stays shown
+// while paused (nothing to hide from) or while a control inside it has focus
+// (e.g. dragging the volume slider). On touch, there's no hover to drive this,
+// so tapping the bare video toggles the bar instead of pausing (see the click
+// handler below) — this is also where clicking the bare video pauses
+// playback on desktop, since both share the same "what does a click on the
+// video itself do" decision and the touch/mouse distinction it depends on.
+function initControlsBarVisibility(video) {
+  const area = document.getElementById("video-area");
+  const bar = document.getElementById("video-controls-bar");
+  if (!area || !bar) return;
+
+  const HIDE_DELAY_MS = 2500;
+  let hideTimer = null;
+  let isTouch = false;
+
+  const show = () => {
+    area.classList.add("show-controls");
+  };
+  const scheduleHide = () => {
+    clearTimeout(hideTimer);
+    if (video.paused || bar.contains(document.activeElement)) return;
+    hideTimer = setTimeout(() => {
+      area.classList.remove("show-controls");
+    }, HIDE_DELAY_MS);
+  };
+  const bump = () => {
+    show();
+    scheduleHide();
+  };
+
+  area.addEventListener("mousemove", () => {
+    if (isTouch) return;
+    bump();
+  });
+  area.addEventListener("mouseleave", () => {
+    if (isTouch || video.paused) return;
+    area.classList.remove("show-controls");
+  });
+
+  area.addEventListener("touchstart", () => {
+    isTouch = true;
+  }, { passive: true });
+
+  video.addEventListener("click", () => {
+    if (isTouch) {
+      area.classList.toggle("show-controls");
+      if (area.classList.contains("show-controls")) scheduleHide();
+      else clearTimeout(hideTimer);
+      return;
+    }
+    // Desktop: clicking the bare video pauses playback, matching the common
+    // click-to-pause convention. Resuming is via the center overlay button
+    // or the bar's play/pause button, not a second click on the video.
+    if (!video.paused) video.pause();
+  });
+
+  video.addEventListener("play", bump);
+  video.addEventListener("pause", show);
+  bar.addEventListener("focusin", show);
+  bar.addEventListener("focusout", scheduleHide);
+
+  show();
+}
+
+// Only acts while focus is inside the video area, so typing " " in the
+// comment textarea elsewhere on the page is never hijacked into a play/pause.
+function initPlayerKeyboardShortcuts(video, playFromLive) {
+  const area = document.getElementById("video-area");
+  const muteBtn = document.getElementById("video-mute-btn");
+  const fullscreenBtn = document.getElementById("video-fullscreen-btn");
+  if (!area) return;
+
+  area.addEventListener("keydown", (event) => {
+    switch (event.key) {
+      case " ":
+      case "Enter":
+        // A focused button already handles its own Enter/Space press;
+        // only the bare area (nothing more specific focused) does it here.
+        if (event.target !== area) return;
+        event.preventDefault();
+        if (video.paused) playFromLive();
+        else video.pause();
+        break;
+      case "m":
+      case "M":
+        muteBtn?.click();
+        break;
+      case "f":
+      case "F":
+        fullscreenBtn?.click();
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        video.muted = false;
+        video.volume = Math.min(1, video.volume + 0.05);
+        break;
+      case "ArrowDown":
+        event.preventDefault();
+        video.volume = Math.max(0, video.volume - 0.05);
+        break;
+      default:
+        break;
+    }
+  });
+}
+
+function initPictureInPicture(video) {
+  const btn = document.getElementById("video-pip-btn");
+  if (!btn) return;
+
+  // Safari uses webkitSupportsPresentationMode instead of the standard API;
+  // out of scope here, so the button just stays hidden there too.
+  if (!document.pictureInPictureEnabled || video.disablePictureInPicture) {
+    return;
+  }
+  btn.hidden = false;
+
+  btn.addEventListener("click", async () => {
+    try {
+      if (document.pictureInPictureElement === video) {
+        await document.exitPictureInPicture();
+      } else {
+        await video.requestPictureInPicture();
+      }
+    } catch {
+      // Rejected (e.g. video not ready yet) — nothing to recover from, the
+      // button just stays in its current state for the viewer to retry.
+    }
+  });
+
+  video.addEventListener("enterpictureinpicture", () => {
+    btn.classList.add("active");
+    btn.setAttribute("aria-label", "ピクチャーインピクチャーを終了");
+  });
+  video.addEventListener("leavepictureinpicture", () => {
+    btn.classList.remove("active");
+    btn.setAttribute("aria-label", "ピクチャーインピクチャーで再生");
+  });
+}
+
+function initBufferingIndicator(video) {
+  const overlay = document.getElementById("video-buffering-overlay");
+  if (!overlay) return;
+
+  video.addEventListener("waiting", () => {
+    overlay.hidden = false;
+  });
+  // playing: normal resume after a stall. canplay: safety net for cases where
+  // "waiting" fires but "playing" doesn't reliably follow (e.g. resuming from
+  // a fully-paused state rather than a stall). pause: avoids a spinner left
+  // on screen over the big center play button if playback stops mid-wait.
+  video.addEventListener("playing", () => {
+    overlay.hidden = true;
+  });
+  video.addEventListener("canplay", () => {
+    overlay.hidden = true;
+  });
+  video.addEventListener("pause", () => {
+    overlay.hidden = true;
+  });
 }
 
 function initCommentStream() {
@@ -164,6 +494,7 @@ function initCommentStream() {
       entry.dataset.targetId = targetId;
       entry.title = item.name;
       entry.style.setProperty("--cost-rgb", tier.rgb);
+      entry.style.setProperty("--item-with-text-bg-dark", tier.bgItemWithTextDark);
 
       const icon = document.createElement("img");
       icon.src = item.iconUrl;
@@ -208,6 +539,7 @@ function initCommentStream() {
     if (data.item) {
       const tier = tierForCost(data.item.cost);
       entry.style.setProperty("--cost-rgb", tier.rgb);
+      entry.style.setProperty("--item-only-bg", tier.bgItemOnly);
       entry.classList.add("comment-has-item", data.text ? "comment-item-with-text" : "comment-item-only");
 
       const icon = document.createElement("img");
@@ -219,10 +551,13 @@ function initCommentStream() {
         icon.alt = "";
         entry.appendChild(icon);
 
+        const bubble = document.createElement("span");
+        bubble.className = "comment-text-bubble";
         const text = document.createElement("span");
         text.className = "comment-text";
         text.textContent = data.text;
-        entry.appendChild(text);
+        bubble.appendChild(text);
+        entry.appendChild(bubble);
       } else {
         icon.alt = data.item.name;
         entry.appendChild(icon);
@@ -243,6 +578,10 @@ function initCommentStream() {
     }
 
     if (scrollWrap.hidden) {
+      // No "entering" class here: the panel is closed (display:none), so the
+      // entrance animation can't play now anyway, and leaving the class on
+      // would replay it for this entry once the panel reopens — exactly the
+      // unwanted "items popping in again" effect this is meant to avoid.
       commentArea.appendChild(entry);
       trimComments();
       if (unreadBadge) {
@@ -253,6 +592,9 @@ function initCommentStream() {
       }
       return;
     }
+
+    entry.classList.add("entering");
+    entry.addEventListener("animationend", () => entry.classList.remove("entering"), { once: true });
 
     const wasAtBottom = isAtBottom();
     commentArea.appendChild(entry);
@@ -280,7 +622,13 @@ function initCommentPanel() {
     scrollWrap.hidden = !scrollWrap.hidden;
     toggleButton.setAttribute("aria-expanded", String(!scrollWrap.hidden));
 
-    if (!scrollWrap.hidden) {
+    if (scrollWrap.hidden) {
+      // A comment's entrance animation (see initCommentStream's "entering"
+      // class) may still be mid-flight when the panel closes, which pauses
+      // it rather than firing animationend — strip the class now so it can't
+      // replay from the start when the panel reopens.
+      commentArea.querySelectorAll("li.entering").forEach((li) => li.classList.remove("entering"));
+    } else {
       if (unreadBadge) {
         unreadBadge.hidden = true;
         unreadBadge.dataset.count = "0";
@@ -351,6 +699,9 @@ function initItemList() {
           itemBox.dataset.id = item.id;
           itemBox.dataset.group = item.group;
           itemBox.hidden = item.group !== activeGroup;
+          const tier = tierForCost(item.cost);
+          itemBox.style.setProperty("--cost-rgb", tier.rgb);
+          itemBox.style.setProperty("--item-only-bg", tier.bgItemOnly);
 
           const icon = document.createElement("img");
           icon.dataset.id = item.id;
@@ -366,7 +717,11 @@ function initItemList() {
           name.className = "item-name";
           name.textContent = item.name;
           name.title = item.name;
-          name.style.color = tierForCost(item.cost).text;
+          // .text is tuned for light backgrounds; on dark backgrounds those same
+          // shades read as near-black, so dark mode reuses the tier's own .rgb
+          // (already a lighter tone, used elsewhere for tints/flashes) as text color.
+          name.style.setProperty("--item-name-color", tier.text);
+          name.style.setProperty("--item-name-color-dark", `rgb(${tier.rgb})`);
           itemBox.appendChild(name);
 
           itemList.appendChild(itemBox);
@@ -434,8 +789,21 @@ function initCommentSend() {
   };
   const resizeInput = () => {
     input.style.height = "auto";
+    // overflow stays hidden below max-height so a 1px scrollHeight/clientHeight
+    // rounding mismatch (line-height fractions) doesn't leave a spurious
+    // scrollbar on a single line; the +1 tolerance absorbs that rounding.
+    const maxHeight = parseFloat(getComputedStyle(input).maxHeight) || Infinity;
+    input.style.overflowY = input.scrollHeight > maxHeight + 1 ? "auto" : "hidden";
     input.style.height = `${input.scrollHeight}px`;
   };
+  // Corner radius is fixed to half the natural one-line height (measured once,
+  // while the textarea is still empty) instead of the relative 999px pill,
+  // so it stays a constant curve at the top/bottom corners as the box grows
+  // taller, with straight sides in between, rather than re-inflating into a
+  // bigger semicircle at every height.
+  input.style.height = "auto";
+  input.style.setProperty("--textarea-radius", `${input.scrollHeight / 2}px`);
+  resizeInput();
   const checkLimits = () => {
     const text = input.value;
     if (text.length > 200) {
@@ -544,6 +912,155 @@ function initSelectedItemChip() {
   update();
 }
 
+function initSelectedItemPreview() {
+  const itemPanel = document.getElementById("item-panel");
+  const itemList = document.getElementById("item-list");
+  const sendRow = document.querySelector(".send-row");
+  const sendArea = document.getElementById("send-area");
+  if (!itemPanel || !itemList || !sendRow) return;
+
+  const update = () => {
+    const selectedBox = itemList.querySelector(".item-box.selected");
+    if (selectedBox) {
+      const costRgb = selectedBox.style.getPropertyValue("--cost-rgb");
+      const itemOnlyBg = selectedBox.style.getPropertyValue("--item-only-bg");
+      sendRow.style.setProperty("--cost-rgb", costRgb);
+      sendRow.style.setProperty("--item-only-bg", itemOnlyBg);
+      sendRow.classList.add("item-selected");
+      if (sendArea) {
+        sendArea.style.setProperty("--cost-rgb", costRgb);
+        sendArea.style.setProperty("--item-only-bg", itemOnlyBg);
+        sendArea.classList.add("item-selected");
+      }
+    } else {
+      sendRow.classList.remove("item-selected");
+      if (sendArea) sendArea.classList.remove("item-selected");
+    }
+  };
+
+  // Selection lives entirely as the .selected class on an .item-box (see
+  // initItemList) — watch that, same as initSelectedItemChip, rather than a
+  // separate selection variable.
+  new MutationObserver(update).observe(itemPanel, {
+    attributes: true,
+    attributeFilter: ["class"],
+    subtree: true,
+  });
+
+  update();
+}
+
+function initChannelList(switchChannel) {
+  const listEl = document.getElementById("channel-list");
+  const tabsEl = document.getElementById("channel-tabs");
+  if (!listEl || !tabsEl) return;
+
+  fetch(CHANNELS_URL)
+    .then((response) => response.json())
+    .then((channels) => {
+      const liveChannels = channels.filter((channel) => !channel.retired);
+      let activeId = liveChannels.find((channel) => channel.default)?.id ?? liveChannels[0]?.id ?? null;
+      // Starts on whichever genre the active channel belongs to, so the
+      // channel actually playing is visible without an extra tab click.
+      let activeCategory =
+        liveChannels.find((channel) => channel.id === activeId)?.category ?? liveChannels[0]?.category ?? null;
+
+      const applyActiveChannel = () => {
+        listEl.querySelectorAll(".channel-item").forEach((btn) => {
+          const isActive = btn.dataset.id === activeId;
+          btn.classList.toggle("active", isActive);
+          btn.setAttribute("aria-pressed", String(isActive));
+        });
+      };
+
+      const applyActiveCategory = () => {
+        tabsEl.querySelectorAll(".channel-tab").forEach((tab) => {
+          const isActive = tab.dataset.category === activeCategory;
+          tab.classList.toggle("active", isActive);
+          tab.setAttribute("aria-pressed", String(isActive));
+        });
+        listEl.querySelectorAll(".channel-item").forEach((btn) => {
+          btn.hidden = btn.dataset.category !== activeCategory;
+        });
+      };
+
+      const selectCategory = (category) => {
+        activeCategory = category;
+        applyActiveCategory();
+      };
+
+      const ensureCategoryTab = (category) => {
+        if (tabsEl.querySelector(`[data-category="${category}"]`)) return;
+
+        const tab = document.createElement("button");
+        tab.type = "button";
+        tab.className = "channel-tab";
+        tab.dataset.category = category;
+        tab.textContent = category;
+        tab.setAttribute("aria-pressed", "false");
+        tab.addEventListener("click", () => selectCategory(category));
+        tabsEl.appendChild(tab);
+      };
+
+      for (const channel of liveChannels) {
+        ensureCategoryTab(channel.category);
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "channel-item";
+        btn.dataset.id = channel.id;
+        btn.dataset.category = channel.category;
+        btn.hidden = channel.category !== activeCategory;
+        btn.setAttribute("aria-pressed", "false");
+
+        const title = document.createElement("span");
+        title.className = "channel-item-title";
+        title.textContent = channel.title;
+        btn.appendChild(title);
+
+        btn.addEventListener("click", () => {
+          if (channel.id === activeId) return;
+          activeId = channel.id;
+          applyActiveChannel();
+          switchChannel?.(`${HLS_ORIGIN}${channel.playlist}`);
+        });
+
+        listEl.appendChild(btn);
+      }
+
+      applyActiveChannel();
+      applyActiveCategory();
+    });
+}
+
+function initTheme() {
+  const root = document.documentElement;
+  const toggleButton = document.getElementById("theme-toggle-btn");
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (!toggleButton) return;
+
+  const THEME_STORAGE_KEY = "theme";
+  const THEME_COLORS = { light: "#f2f2f0", dark: "#15171a" };
+
+  const applyTheme = (theme) => {
+    root.dataset.theme = theme;
+    toggleButton.setAttribute("aria-checked", String(theme === "dark"));
+    toggleButton.setAttribute("aria-label", theme === "dark" ? "ライトモードに切り替え" : "ダークモードに切り替え");
+    if (themeColorMeta) themeColorMeta.setAttribute("content", THEME_COLORS[theme]);
+  };
+
+  // The inline script in index.html's <head> already set root.dataset.theme
+  // before first paint (avoids a flash of the wrong theme); this just syncs
+  // the button/meta to whatever it picked.
+  applyTheme(root.dataset.theme === "dark" ? "dark" : "light");
+
+  toggleButton.addEventListener("click", () => {
+    const next = root.dataset.theme === "dark" ? "light" : "dark";
+    localStorage.setItem(THEME_STORAGE_KEY, next);
+    applyTheme(next);
+  });
+}
+
 function initLayoutFit() {
   const layout = document.querySelector(".layout");
   const videoArea = document.getElementById("video-area");
@@ -592,10 +1109,13 @@ function initLayoutFit() {
   update();
 }
 
-initPlayer();
+const switchChannel = initPlayer();
 initCommentStream();
 initCommentPanel();
+initChannelList(switchChannel);
 initItemList();
 initCommentSend();
 initSelectedItemChip();
+initSelectedItemPreview();
+initTheme();
 initLayoutFit();
