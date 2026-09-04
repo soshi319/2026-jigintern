@@ -488,13 +488,25 @@ button {
   min-width: 0;
 }
 
+/* A button, not a label: it jumps to that genre in the channel panel. */
 .now-playing-category {
   flex: 0 0 auto;
+  font: inherit;
   font-size: 0.72em;
   padding: 0.15rem 0.55rem;
+  border: none;
   border-radius: 999px;
   background: var(--color-muted-surface);
-  transition: background-color 0.15s ease;
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.now-playing-category:hover {
+  background: var(--color-muted-surface-hover);
+  color: var(--color-accent);
 }
 
 .now-playing-category[hidden] {

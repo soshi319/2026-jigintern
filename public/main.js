@@ -1588,6 +1588,7 @@ function initChannelList(switchChannel) {
         if (titleEl) titleEl.textContent = active.title;
         if (categoryEl) {
           categoryEl.textContent = active.category;
+          categoryEl.title = `${active.category}のチャンネル一覧を表示`;
           categoryEl.hidden = !active.category;
         }
       };
@@ -1646,6 +1647,22 @@ function initChannelList(switchChannel) {
 
         listEl.appendChild(btn);
       }
+
+      // The category under the video doubles as the way back to the rest of
+      // that genre: the channel panel sits below the fold on most screens, and
+      // the tabs there may be showing a category the viewer browsed to rather
+      // than the one actually playing. Reading activeId at click time (instead
+      // of closing over it) keeps this a single listener across channel switches.
+      categoryEl?.addEventListener("click", () => {
+        const active = liveChannels.find((channel) => channel.id === activeId);
+        if (!active) return;
+        selectCategory(active.category);
+        tabsEl.querySelector(".channel-tab.active")?.focus({ preventScroll: true });
+        document.getElementById("channel-panel")?.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+          block: "nearest",
+        });
+      });
 
       applyActiveChannel();
       applyActiveCategory();
