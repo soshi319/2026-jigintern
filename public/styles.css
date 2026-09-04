@@ -669,6 +669,47 @@ button {
   color: var(--color-text);
 }
 
+/* Sits inside .comment-header, which collapses the feed when clicked — the
+   handler there excludes this button (as it already does the ticker items). */
+.comment-speech-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text);
+  opacity: 0.55;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    opacity 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.comment-speech-btn:hover {
+  opacity: 1;
+  background: var(--color-muted-surface);
+}
+
+.comment-speech-btn.is-on {
+  color: var(--color-accent);
+  opacity: 1;
+}
+
+.comment-speech-btn .icon-speech-on {
+  display: none;
+}
+
+.comment-speech-btn.is-on .icon-speech-on {
+  display: block;
+}
+
+.comment-speech-btn.is-on .icon-speech-off {
+  display: none;
+}
+
 .comment-unread-badge {
   flex: 0 0 auto;
   background: var(--color-accent);

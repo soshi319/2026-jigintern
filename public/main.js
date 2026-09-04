@@ -435,6 +435,7 @@ const GLOBAL_SHORTCUTS = [
   { id: "fullscreen", label: "全画面表示の切り替え", defaultCombo: "Alt+KeyF" },
   { id: "mute", label: "ミュート切り替え", defaultCombo: "Alt+KeyM" },
   { id: "theme", label: "ダークモード切り替え", defaultCombo: "Alt+KeyD" },
+  { id: "readAloud", label: "コメント読み上げの ON / OFF", defaultCombo: "Alt+KeyR" },
 ];
 
 // Each action drives the very control a pointer would use, so the aria-label
@@ -448,6 +449,7 @@ const GLOBAL_SHORTCUT_ACTIONS = {
   fullscreen: () => document.getElementById("video-fullscreen-btn")?.click(),
   mute: () => document.getElementById("video-mute-btn")?.click(),
   theme: () => document.getElementById("theme-toggle-btn")?.click(),
+  readAloud: () => document.getElementById("comment-speech-btn")?.click(),
 };
 
 // Only shortcuts that actually work today, so this list never advertises a key
@@ -913,7 +915,72 @@ function initBufferingIndicator(video) {
   });
 }
 
-function initCommentStream() {
+// A busy feed enqueues faster than speech drains, so arrivals past this depth
+// are dropped rather than queued. Dropping keeps what is spoken current and
+// lets each utterance finish; cancelling the one in progress on every arrival
+// would mean never hearing a single comment through to the end.
+const SPEECH_MAX_QUEUE = 3;
+// Comments run to 200 characters, which is roughly 20 seconds of Japanese
+// speech — long enough that one comment alone would fill the queue behind it.
+const SPEECH_MAX_CHARS = 50;
+
+// Returns the function initCommentStream calls for each arrival, or null when
+// the browser has no SpeechSynthesis (the button is then hidden rather than
+// left as a control that does nothing).
+function initCommentSpeech() {
+  const button = document.getElementById("comment-speech-btn");
+  if (!button) return null;
+  if (!("speechSynthesis" in window)) {
+    button.hidden = true;
+    return null;
+  }
+
+  // Deliberately not persisted, unlike the theme: a page that starts talking
+  // on load, before the viewer has touched anything, is startling in a way a
+  // remembered color scheme never is.
+  let enabled = false;
+  // speechSynthesis.pending only says "something is waiting", not how much, so
+  // the depth is counted here instead.
+  let queued = 0;
+
+  const sync = () => {
+    button.classList.toggle("is-on", enabled);
+    button.setAttribute("aria-pressed", String(enabled));
+    button.setAttribute("aria-label", enabled ? "コメントの読み上げを止める" : "コメントを読み上げる");
+  };
+
+  button.addEventListener("click", () => {
+    enabled = !enabled;
+    if (!enabled) {
+      // Cancel outright rather than merely stop enqueuing — an off switch that
+      // leaves it talking through three more comments isn't an off switch.
+      window.speechSynthesis.cancel();
+      queued = 0;
+    }
+    sync();
+  });
+
+  sync();
+
+  return (text) => {
+    if (!enabled || !text || queued >= SPEECH_MAX_QUEUE) return;
+
+    const utterance = new SpeechSynthesisUtterance(text.slice(0, SPEECH_MAX_CHARS));
+    utterance.lang = "ja-JP";
+    // cancel() also settles pending utterances, so queued is floored at 0 to
+    // absorb the reset above racing with these.
+    const settle = () => {
+      queued = Math.max(0, queued - 1);
+    };
+    utterance.addEventListener("end", settle);
+    utterance.addEventListener("error", settle);
+
+    queued += 1;
+    window.speechSynthesis.speak(utterance);
+  };
+}
+
+function initCommentStream(speak) {
   const commentArea = document.getElementById("comment-area");
   const commentPanel = document.getElementById("comment-panel");
   const scrollWrap = document.getElementById("comment-scroll-wrap");
@@ -1071,6 +1138,10 @@ function initCommentStream() {
       icon.title = data.item.name;
       icon.className = data.text ? "comment-item-icon-small" : "comment-item-icon";
 
+      // Also what gets read aloud for an item-only Comment, so the sentence
+      // heard is the same one shown rather than a second phrasing of it.
+      const sentItemText = `${data.item.name}を送りました。`;
+
       if (data.text) {
         icon.alt = "";
         entry.appendChild(icon);
@@ -1088,17 +1159,22 @@ function initCommentStream() {
 
         const sentText = document.createElement("span");
         sentText.className = "comment-item-sent-text";
-        sentText.textContent = `${data.item.name}を送りました。`;
+        sentText.textContent = sentItemText;
         entry.appendChild(sentText);
       }
 
       pushTicker(data.item, data.id);
       flashPanel(tier);
+      // An Item carrying text reads as that text alone: the item's name is
+      // already conveyed by the sound of the arrival, and prefixing every
+      // comment with it would bury the part the sender actually wrote.
+      speak?.(data.text || sentItemText);
     } else if (data.text) {
       const text = document.createElement("span");
       text.className = "comment-text";
       text.textContent = data.text;
       entry.appendChild(text);
+      speak?.(data.text);
     }
 
     if (scrollWrap.hidden) {
@@ -1141,7 +1217,9 @@ function initCommentPanel() {
   if (!header || !toggleButton || !scrollWrap || !commentArea) return;
 
   header.addEventListener("click", (event) => {
-    if (event.target.closest(".ticker-item")) return;
+    // Controls that live in the header do their own thing; only a click on the
+    // bare header collapses the feed.
+    if (event.target.closest(".ticker-item, .comment-speech-btn")) return;
 
     scrollWrap.hidden = !scrollWrap.hidden;
     toggleButton.setAttribute("aria-expanded", String(!scrollWrap.hidden));
@@ -1634,7 +1712,7 @@ function initLayoutFit() {
 }
 
 const switchChannel = initPlayer();
-initCommentStream();
+initCommentStream(initCommentSpeech());
 initCommentPanel();
 initChannelList(switchChannel);
 initItemList();
