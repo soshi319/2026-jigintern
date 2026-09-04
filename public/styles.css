@@ -601,6 +601,33 @@ button {
   max-height: none;
 }
 
+/* The collapse is animated by initCommentPanel, which measures both ends and
+   drives them as inline heights. Nothing here needs to know how tall the feed
+   is, so there is no constant to keep in sync and it behaves the same at both
+   breakpoints. The transition is scoped to .is-animating rather than left on
+   .comment-panel because animating height on a box this large forces layout —
+   the same reason .box leaves box-shadow out of its own transition. */
+.comment-panel.is-animating {
+  transition: height 0.24s ease;
+}
+
+/* flex-basis would win over the height being animated, so the wrap steps out
+   of flex sizing for the duration. overflow clips .comment-area, which is
+   absolutely positioned and would otherwise spill past the shrinking wrap and
+   over the send row. */
+.comment-panel.is-animating .comment-scroll-wrap {
+  flex: 0 0 auto;
+  overflow: hidden;
+  transition: height 0.24s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .comment-panel.is-animating,
+  .comment-panel.is-animating .comment-scroll-wrap {
+    transition: none;
+  }
+}
+
 .comment-panel.flash {
   animation: panel-flash 1s ease-out;
 }

@@ -1366,35 +1366,108 @@ function initCommentStream(speak, playItemSound) {
   };
 }
 
+// The collapse is animated by measuring the panel and the feed at both ends of
+// the toggle and driving those two heights as inline styles. Nothing needs to
+// know how tall the feed is, so there is no constant to drift out of sync and
+// it behaves identically at both breakpoints.
+//
+// Crucially, `scrollWrap.hidden` is still what "collapsed" means — it is only
+// applied once the animation lands. That keeps it the single source of truth
+// for the two other places that read it: initCommentStream's unread-badge
+// branch, and the .comment-panel:has(#comment-scroll-wrap[hidden]) rule that
+// releases the panel's fixed height.
+const COMMENT_TOGGLE_MS = 240;
+
 function initCommentPanel() {
+  const panel = document.getElementById("comment-panel");
   const header = document.getElementById("comment-header");
   const toggleButton = document.getElementById("comment-toggle-btn");
   const scrollWrap = document.getElementById("comment-scroll-wrap");
   const commentArea = document.getElementById("comment-area");
   const unreadBadge = document.getElementById("comment-unread-badge");
-  if (!header || !toggleButton || !scrollWrap || !commentArea) return;
+  if (!panel || !header || !toggleButton || !scrollWrap || !commentArea) return;
+
+  // Reads the layout the panel would have in the given state, then puts it
+  // back. Measuring beats arithmetic here: the panel's expanded height comes
+  // from CSS that differs per breakpoint, and its collapsed height is whatever
+  // the header and send row happen to add up to.
+  const measure = (hidden) => {
+    const previous = scrollWrap.hidden;
+    scrollWrap.hidden = hidden;
+    const size = { panel: panel.offsetHeight, wrap: hidden ? 0 : scrollWrap.offsetHeight };
+    scrollWrap.hidden = previous;
+    return size;
+  };
+
+  let finish = null;
+
+  const runToggle = (collapsed) => {
+    // A second click mid-run must not leave inline heights behind, so the run
+    // in flight is landed first.
+    finish?.();
+
+    const from = measure(scrollWrap.hidden);
+    const to = measure(collapsed);
+
+    // Laid out for the whole run in both directions — a closing feed stays on
+    // screen while it shrinks instead of vanishing on the first frame.
+    scrollWrap.hidden = false;
+    toggleButton.setAttribute("aria-expanded", String(!collapsed));
+
+    if (!collapsed && unreadBadge) {
+      unreadBadge.hidden = true;
+      unreadBadge.dataset.count = "0";
+    }
+
+    panel.style.height = `${from.panel}px`;
+    scrollWrap.style.height = `${from.wrap}px`;
+    panel.classList.add("is-animating");
+    // Forces the start values to be rendered, or the browser coalesces them
+    // with the end values below and there is nothing to transition between.
+    void panel.offsetHeight;
+    panel.style.height = `${to.panel}px`;
+    scrollWrap.style.height = `${to.wrap}px`;
+
+    const onEnd = (event) => {
+      if (event.target === panel && event.propertyName === "height") finish?.();
+    };
+
+    // transitionend is not guaranteed: under prefers-reduced-motion there is no
+    // transition at all, and a toggle whose two ends measure the same never
+    // fires one either. The timer is what always ends the run.
+    const timer = setTimeout(() => finish?.(), COMMENT_TOGGLE_MS + 60);
+
+    finish = () => {
+      finish = null;
+      clearTimeout(timer);
+      panel.removeEventListener("transitionend", onEnd);
+      panel.classList.remove("is-animating");
+      panel.style.height = "";
+      scrollWrap.style.height = "";
+      scrollWrap.hidden = collapsed;
+
+      if (collapsed) {
+        // A comment's entrance animation (see initCommentStream's "entering"
+        // class) may still be mid-flight when the panel closes, which pauses
+        // it rather than firing animationend — strip the class now so it can't
+        // replay from the start when the panel reopens.
+        commentArea.querySelectorAll("li.entering").forEach((li) => li.classList.remove("entering"));
+      } else {
+        // Only meaningful once the inline heights are gone and the feed has
+        // its real scrollable size back.
+        commentArea.scrollTop = commentArea.scrollHeight;
+      }
+    };
+
+    panel.addEventListener("transitionend", onEnd);
+  };
 
   header.addEventListener("click", (event) => {
     // Controls that live in the header do their own thing; only a click on the
     // bare header collapses the feed.
     if (event.target.closest(".ticker-item, .comment-header-btn")) return;
 
-    scrollWrap.hidden = !scrollWrap.hidden;
-    toggleButton.setAttribute("aria-expanded", String(!scrollWrap.hidden));
-
-    if (scrollWrap.hidden) {
-      // A comment's entrance animation (see initCommentStream's "entering"
-      // class) may still be mid-flight when the panel closes, which pauses
-      // it rather than firing animationend — strip the class now so it can't
-      // replay from the start when the panel reopens.
-      commentArea.querySelectorAll("li.entering").forEach((li) => li.classList.remove("entering"));
-    } else {
-      if (unreadBadge) {
-        unreadBadge.hidden = true;
-        unreadBadge.dataset.count = "0";
-      }
-      commentArea.scrollTop = commentArea.scrollHeight;
-    }
+    runToggle(!scrollWrap.hidden);
   });
 }
 
