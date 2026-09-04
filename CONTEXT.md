@@ -33,3 +33,19 @@ A Comment carrying an Item is visually promoted over a plain text-only Comment v
 **Item Ticker**:
 The row of recently-arrived Items pinned above the scrolling comment feed (`#item-ticker`), independent of and in addition to how each Comment already renders in the feed. Newest arrival is added at the left; older entries sit further right behind a fade, reachable by scrolling. A repeat of the same Item moves its entry back to the left, bumps its count (`×N`), and resets its 10-second lifetime instead of adding a second entry. Clicking an entry scrolls the feed to that Item's original Comment. Stays visible even when the comment feed itself is collapsed.
 _Avoid_: super chat, pinned banner (this project's term is "ticker")
+
+**Combo**:
+One key combination bound to a single action, e.g. Alt+T. A Combo names a key by its physical position on the keyboard rather than by the character that key produces, because holding Option on a Mac changes the character (Option+T yields "†") while the physical key does not move. A Combo therefore has two forms that must not be confused: the identity it is matched and compared by, and the label shown to a viewer — the latter also varying by platform, since Alt is called Option on a Mac.
+_Avoid_: keybinding, shortcut key, accelerator, hotkey
+
+**Global Shortcut**:
+A Combo that acts anywhere on the page regardless of what has focus, and that the viewer can reassign. Covers play/pause, focusing the comment input, opening the item panel, fullscreen, mute, dark mode, and comment read-aloud. A Global Shortcut whose Combo contains neither Alt nor Ctrl produces a character when pressed, so it is suppressed while the viewer is typing; the viewer is warned about this when assigning one but is not prevented from doing so. A Global Shortcut may also be Unassigned — carrying no Combo at all — either because the viewer cleared it, or because a newly added action's default Combo was already taken by one of the viewer's own assignments. Contrast with Player Shortcut.
+_Avoid_: hotkey, keybind, global hotkey
+
+**Player Shortcut**:
+A Combo that acts only while focus is inside the video area, and that the viewer cannot reassign — the set that predates Global Shortcuts: play/pause, mute, fullscreen, volume up, volume down. Listed in the Shortcut Panel so viewers can discover them, but shown as fixed. Their Combos are reserved: assigning one of them to a Global Shortcut is refused, because both would fire on a single press and cancel each other out.
+_Avoid_: video shortcut, player hotkey
+
+**Shortcut Panel**:
+The modal listing every Global Shortcut and Player Shortcut alongside the action it performs, and the only place a Global Shortcut's Combo is reassigned. Opened either from a button in the page header or by the `?` key, which is itself fixed and cannot be reassigned.
+_Avoid_: help dialog, settings modal, keymap, cheat sheet

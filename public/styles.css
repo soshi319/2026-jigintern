@@ -1473,3 +1473,185 @@ button {
     max-height: 60vh;
   }
 }
+
+.page-header-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* .page-header's background is a fixed dark gray regardless of theme (see
+   there), so this button's colors are literals rather than --color-* tokens,
+   same as the theme-switch icons beside it. */
+.header-icon-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0.3rem;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: #c8ccd0;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.header-icon-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.shortcut-panel {
+  width: min(92vw, 560px);
+  max-height: min(80vh, 640px);
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 8px 24px var(--shadow-strong);
+  overflow: hidden;
+  transition: background-color 0.15s ease;
+}
+
+/* A closed <dialog> is display:none, so the flex column has to be switched on
+   by [open] rather than declared above — otherwise it would override that. */
+.shortcut-panel[open] {
+  display: flex;
+  flex-direction: column;
+  animation: shortcut-panel-in 0.18s ease-out;
+}
+
+.shortcut-panel::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+@keyframes shortcut-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shortcut-panel[open] {
+    animation: none;
+  }
+}
+
+.shortcut-panel-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border-soft);
+  font-weight: 600;
+  transition: border-color 0.15s ease;
+}
+
+.shortcut-panel-header h2 {
+  margin: 0;
+  font: inherit;
+}
+
+.shortcut-panel-close-btn {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 1.1em;
+  line-height: 1;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--color-text);
+  padding: 0.2rem 0.4rem;
+  transition: color 0.15s ease;
+}
+
+.shortcut-panel-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.shortcut-section + .shortcut-section {
+  margin-top: 1.25rem;
+}
+
+.shortcut-section-title {
+  margin: 0 0 0.25rem;
+  font: inherit;
+  font-size: 0.85em;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+.shortcut-section-note {
+  margin: 0 0 0.5rem;
+  font-size: 0.78em;
+  line-height: 1.5;
+  opacity: 0.65;
+}
+
+.shortcut-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.shortcut-table th,
+.shortcut-table td {
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--color-border-soft);
+  transition: border-color 0.15s ease;
+}
+
+.shortcut-table tr:last-child th,
+.shortcut-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* The action name takes all the slack so the keycap column stays hugged to
+   the right edge, however long the labels get. */
+.shortcut-table th {
+  font: inherit;
+  font-weight: 400;
+  width: 100%;
+}
+
+.shortcut-table td {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.shortcut-combo {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--color-muted-surface);
+  font: inherit;
+  font-size: 0.85em;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+/* Separates the two interchangeable Combos an action can have (play/pause is
+   both Space and Enter). */
+.shortcut-combo-sep {
+  padding: 0 0.3rem;
+  font-size: 0.8em;
+  opacity: 0.5;
+}

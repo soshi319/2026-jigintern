@@ -333,6 +333,202 @@ function initPlayerKeyboardShortcuts(video, playFromLive) {
   });
 }
 
+// A Combo names a key by its physical position (event.code), not by the
+// character it produces: holding Option on a Mac turns event.key for Option+T
+// into "†", while event.code stays "KeyT" whatever the layout or modifiers
+// (https://www.w3.org/TR/uievents/#dom-keyboardevent-code). Combos are matched
+// and compared in that form ("Alt+KeyT") and converted to a viewer-facing
+// label ("Option+T") only at render time — see formatCombo.
+const IS_MAC = /Mac/i.test(navigator.userAgentData?.platform || navigator.platform || "");
+
+// Modifiers are always emitted in this order, so the same keypress always
+// produces the same string and two Combos can be compared with ===.
+const COMBO_MODIFIERS = [
+  ["ctrlKey", "Ctrl"],
+  ["altKey", "Alt"],
+  ["shiftKey", "Shift"],
+  ["metaKey", "Meta"],
+];
+
+const MODIFIER_LABELS = {
+  Ctrl: () => (IS_MAC ? "Control" : "Ctrl"),
+  Alt: () => (IS_MAC ? "Option" : "Alt"),
+  Shift: () => "Shift",
+  Meta: () => (IS_MAC ? "Command" : "Win"),
+};
+
+// Only codes whose label isn't already derivable by formatCombo's KeyX/DigitX rules.
+const KEY_LABELS = {
+  ArrowUp: "↑",
+  ArrowDown: "↓",
+  ArrowLeft: "←",
+  ArrowRight: "→",
+  Escape: "Esc",
+  Slash: "/",
+  Backslash: "\\",
+  Comma: ",",
+  Period: ".",
+  Semicolon: ";",
+  Quote: "'",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Minus: "-",
+  Equal: "=",
+  Backquote: "`",
+};
+
+function comboFromEvent(event) {
+  const parts = COMBO_MODIFIERS.filter(([property]) => event[property]).map(([, name]) => name);
+  parts.push(event.code);
+  return parts.join("+");
+}
+
+function formatCombo(combo) {
+  const parts = combo.split("+");
+  const code = parts.pop();
+  const labels = parts.map((name) => MODIFIER_LABELS[name]?.() ?? name);
+
+  if (KEY_LABELS[code]) labels.push(KEY_LABELS[code]);
+  else if (code.startsWith("Key")) labels.push(code.slice(3));
+  else if (code.startsWith("Digit")) labels.push(code.slice(5));
+  else labels.push(code);
+
+  return labels.join(" + ");
+}
+
+// A Combo holding neither Alt nor Ctrl types a character, so firing it while
+// the viewer is mid-sentence would both swallow the keystroke and trigger an
+// unrelated action.
+function isTypingTarget(target) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
+}
+
+// The Shortcut Panel's own Combo is deliberately fixed — the panel is the only
+// place a Combo can be reassigned, so losing the key that opens it would be
+// hard to recover from — hence it sits here rather than in a reassignable set.
+const PANEL_COMBO = "Shift+Slash";
+
+// Only shortcuts that actually work today. Global Shortcuts (Alt+…) get their
+// own section here once they exist, so this list never advertises a key that
+// does nothing.
+const SHORTCUT_SECTIONS = [
+  {
+    title: "全体",
+    note: null,
+    // display overrides the derived "Shift + /", since a viewer thinks of this
+    // key as "?" — the character printed on it — not as its two components.
+    rows: [{ label: "ショートカット一覧を開く / 閉じる", combos: [PANEL_COMBO], display: ["?"] }],
+  },
+  {
+    title: "動画エリア選択中のみ",
+    note: "動画エリアをクリック、または Tab キーで選択している間だけ有効です。これらのキーは変更できません。",
+    rows: [
+      { label: "再生 / 一時停止", combos: ["Space", "Enter"] },
+      { label: "ミュート切り替え", combos: ["KeyM"] },
+      { label: "全画面表示の切り替え", combos: ["KeyF"] },
+      { label: "音量を上げる", combos: ["ArrowUp"] },
+      { label: "音量を下げる", combos: ["ArrowDown"] },
+    ],
+  },
+];
+
+function initShortcutPanel() {
+  const panel = document.getElementById("shortcut-panel");
+  const body = document.getElementById("shortcut-panel-body");
+  const openButton = document.getElementById("shortcut-help-btn");
+  const closeButton = document.getElementById("shortcut-panel-close-btn");
+  if (!panel || !body || !openButton) return;
+
+  // Without <dialog> support the panel isn't hidden by the UA's own styles, so
+  // it would render inline and permanently at the foot of the page. Dropping
+  // the feature entirely beats that.
+  if (typeof panel.showModal !== "function") {
+    panel.hidden = true;
+    openButton.hidden = true;
+    return;
+  }
+
+  for (const section of SHORTCUT_SECTIONS) {
+    const sectionEl = document.createElement("section");
+    sectionEl.className = "shortcut-section";
+
+    const title = document.createElement("h3");
+    title.className = "shortcut-section-title";
+    title.textContent = section.title;
+    sectionEl.appendChild(title);
+
+    if (section.note) {
+      const note = document.createElement("p");
+      note.className = "shortcut-section-note";
+      note.textContent = section.note;
+      sectionEl.appendChild(note);
+    }
+
+    const table = document.createElement("table");
+    table.className = "shortcut-table";
+    const tbody = document.createElement("tbody");
+
+    for (const row of section.rows) {
+      const tr = document.createElement("tr");
+
+      const th = document.createElement("th");
+      th.scope = "row";
+      th.textContent = row.label;
+      tr.appendChild(th);
+
+      const td = document.createElement("td");
+      row.combos.forEach((combo, index) => {
+        if (index > 0) {
+          const separator = document.createElement("span");
+          separator.className = "shortcut-combo-sep";
+          separator.textContent = "/";
+          td.appendChild(separator);
+        }
+        const key = document.createElement("kbd");
+        key.className = "shortcut-combo";
+        key.textContent = row.display?.[index] ?? formatCombo(combo);
+        td.appendChild(key);
+      });
+      tr.appendChild(td);
+
+      tbody.appendChild(tr);
+    }
+
+    table.appendChild(tbody);
+    sectionEl.appendChild(table);
+    body.appendChild(sectionEl);
+  }
+
+  const open = () => {
+    if (!panel.open) panel.showModal();
+  };
+  const close = () => {
+    if (panel.open) panel.close();
+  };
+
+  openButton.addEventListener("click", () => (panel.open ? close() : open()));
+  closeButton?.addEventListener("click", close);
+
+  // showModal() sizes the dialog's own box to fill the viewport in some
+  // engines, so a click that lands on the element itself rather than on any of
+  // its children is a click on the backdrop.
+  panel.addEventListener("click", (event) => {
+    if (event.target === panel) close();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (comboFromEvent(event) !== PANEL_COMBO) return;
+    // Once the panel is open its own content holds focus, so this only ever
+    // guards the "?" that opens it, never the one that closes it.
+    if (isTypingTarget(event.target)) return;
+    event.preventDefault();
+    if (panel.open) close();
+    else open();
+  });
+}
+
 function initPictureInPicture(video) {
   const btn = document.getElementById("video-pip-btn");
   if (!btn) return;
@@ -1118,4 +1314,5 @@ initCommentSend();
 initSelectedItemChip();
 initSelectedItemPreview();
 initTheme();
+initShortcutPanel();
 initLayoutFit();
