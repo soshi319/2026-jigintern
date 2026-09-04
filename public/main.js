@@ -1558,6 +1558,8 @@ function initSelectedItemPreview() {
 function initChannelList(switchChannel) {
   const listEl = document.getElementById("channel-list");
   const tabsEl = document.getElementById("channel-tabs");
+  const titleEl = document.getElementById("now-playing-title");
+  const categoryEl = document.getElementById("now-playing-category");
   if (!listEl || !tabsEl) return;
 
   fetch(CHANNELS_URL)
@@ -1576,6 +1578,18 @@ function initChannelList(switchChannel) {
           btn.classList.toggle("active", isActive);
           btn.setAttribute("aria-pressed", String(isActive));
         });
+
+        // The "now playing" line under the video is driven straight from here
+        // rather than watching the .active class the way initSelectedItemChip
+        // watches item selection: there's one producer and one consumer, and
+        // the channel object with the title in it is only in scope at this point.
+        const active = liveChannels.find((channel) => channel.id === activeId);
+        if (!active) return;
+        if (titleEl) titleEl.textContent = active.title;
+        if (categoryEl) {
+          categoryEl.textContent = active.category;
+          categoryEl.hidden = !active.category;
+        }
       };
 
       const applyActiveCategory = () => {
