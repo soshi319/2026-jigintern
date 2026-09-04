@@ -1359,16 +1359,69 @@ button {
   }
 }
 
+.item-list-viewport {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+}
+
+/* Two fixed rows, filled top-to-bottom then left-to-right (grid-auto-flow:
+   column), which is exactly the order asked for: cheapest top-left, next
+   below it, then on to the following column. Three columns are visible at a
+   time whatever the panel's width, and the rest are reached with the arrows.
+   The row height is fixed so every box is the same size regardless of how
+   long its name is. */
 #item-list {
+  --item-gap: 0.5rem;
   flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0.5rem;
+  min-width: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(4.5em, 1fr));
-  align-content: start;
-  gap: 0.5rem;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, 5.1em);
+  grid-auto-columns: calc((100% - 2 * var(--item-gap)) / 3);
+  gap: var(--item-gap);
+  padding: 0.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+#item-list::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  #item-list {
+    scroll-behavior: smooth;
+  }
+}
+
+.item-nav-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  border: none;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
+}
+
+.item-nav-btn:hover:not(:disabled) {
+  color: var(--color-accent);
+}
+
+/* Kept in the layout rather than hidden at the ends, so the grid beside it
+   doesn't change width every time you reach an edge. */
+.item-nav-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
 }
 
 .item-box {
@@ -1376,6 +1429,7 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0.2rem;
   min-width: 0;
   font: inherit;
@@ -1384,8 +1438,10 @@ button {
   border-radius: 4px;
   background: var(--color-surface);
   cursor: pointer;
-  content-visibility: auto;
-  contain-intrinsic-size: 80px;
+  /* content-visibility:auto was dropped when the grid became a fixed 2-row
+     horizontal scroller: skipped boxes report the wrong size, which throws off
+     scrollWidth and so the arrows' end detection. A single group is ~20 boxes,
+     so there was nothing to gain from it anyway. */
   transition:
     background-color 0.15s ease,
     border-color 0.15s ease;

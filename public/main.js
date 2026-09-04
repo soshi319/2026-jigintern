@@ -1249,10 +1249,24 @@ function initItemList() {
   const groupTabs = document.getElementById("item-group-tabs");
   const toggleButton = document.getElementById("item-toggle-btn");
   const closeButton = document.getElementById("item-panel-close-btn");
+  const prevButton = document.getElementById("item-prev-btn");
+  const nextButton = document.getElementById("item-next-btn");
   if (!itemPanel || !itemList || !groupTabs || !toggleButton) return;
 
   let lastFetchTime = 0;
   let activeGroup = null;
+
+  // The grid shows three columns at a time; anything past that is reached with
+  // the arrows. They stay in the layout when disabled (see .item-nav-btn) so
+  // the grid beside them keeps a constant width.
+  const syncNav = () => {
+    if (!prevButton || !nextButton) return;
+    // 1px of slack: fractional column widths mean scrollLeft rarely lands
+    // exactly on scrollWidth - clientWidth at the far end.
+    const maxScroll = itemList.scrollWidth - itemList.clientWidth;
+    prevButton.disabled = itemList.scrollLeft <= 1;
+    nextButton.disabled = itemList.scrollLeft >= maxScroll - 1;
+  };
 
   const applyActiveGroup = () => {
     groupTabs.querySelectorAll(".item-group-tab").forEach((tab) => {
@@ -1263,6 +1277,10 @@ function initItemList() {
     itemList.querySelectorAll(".item-box").forEach((box) => {
       box.hidden = box.dataset.group !== activeGroup;
     });
+    // A new group starts at its cheapest item rather than inheriting the
+    // previous group's scroll position.
+    itemList.scrollLeft = 0;
+    syncNav();
   };
 
   const selectGroup = (group) => {
@@ -1332,6 +1350,8 @@ function initItemList() {
           itemList.appendChild(itemBox);
         }
         lastFetchTime = Date.now();
+        // Items just landed, so scrollWidth only becomes meaningful now.
+        syncNav();
       });
   };
 
@@ -1353,6 +1373,19 @@ function initItemList() {
   });
 
   if (closeButton) closeButton.addEventListener("click", closePanel);
+
+  // One viewport's worth per press, so a press always advances by whole
+  // columns and the arrows stay in step with what's on screen.
+  const scrollByPage = (direction) => {
+    itemList.scrollBy({ left: direction * itemList.clientWidth });
+  };
+
+  prevButton?.addEventListener("click", () => scrollByPage(-1));
+  nextButton?.addEventListener("click", () => scrollByPage(1));
+  itemList.addEventListener("scroll", syncNav);
+  // The grid's column width is a percentage of the panel, so a resize changes
+  // how far one page scrolls and whether an end has been reached.
+  window.addEventListener("resize", syncNav);
 
   document.addEventListener("click", (event) => {
     if (itemPanel.hidden) return;

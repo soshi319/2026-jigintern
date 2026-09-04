@@ -289,7 +289,33 @@
             <button id="item-panel-close-btn" type="button" class="item-panel-close-btn" aria-label="閉じる">×</button>
           </div>
           <div id="item-group-tabs" class="item-group-tabs"></div>
-          <div id="item-list"></div>
+          <div class="item-list-viewport">
+            <button id="item-prev-btn" type="button" class="item-nav-btn item-nav-prev" aria-label="前のアイテムを表示">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path
+                  d="M15 5l-7 7 7 7"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+            <div id="item-list"></div>
+            <button id="item-next-btn" type="button" class="item-nav-btn item-nav-next" aria-label="次のアイテムを表示">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path
+                  d="M9 5l7 7-7 7"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
         </div>
 
