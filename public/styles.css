@@ -1213,9 +1213,13 @@ button {
   }
 }
 
+/* Two columns at every width, growing downward as channels are added, rather
+   than the auto-fill that widened into three and four on a large screen. The
+   minmax(0, …) is what stops a long title (Cosmos Laundromat: First Cycle)
+   from pushing its column wider than the other and unbalancing the pair. */
 .channel-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9em, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
   max-height: 220px;
   overflow-y: auto;
