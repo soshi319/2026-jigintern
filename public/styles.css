@@ -1666,3 +1666,165 @@ button {
   font-size: 0.8em;
   opacity: 0.5;
 }
+
+/* Sits directly under the action's own label, beside the key that was just
+   pressed — a refusal shown down in the footer is a table's height away from
+   where the viewer is looking and gets missed. */
+.shortcut-row-message {
+  margin: 0.25rem 0 0;
+  font-size: 0.78em;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
+.shortcut-table tr.is-error .shortcut-row-message {
+  color: var(--color-error);
+  opacity: 1;
+}
+
+.shortcut-table tr.is-warning .shortcut-row-message {
+  color: #a16207;
+  opacity: 1;
+}
+
+:root[data-theme="dark"] .shortcut-table tr.is-warning .shortcut-row-message {
+  color: #f1ce5e;
+}
+
+/* Only a nudge toward the message beside the key — proximity is what actually
+   fixes the "didn't notice it" problem, this just draws the eye there. */
+.shortcut-table tr.is-flagged {
+  --row-flash: rgba(127, 127, 127, 0.28);
+  animation: shortcut-row-flash 1s ease-out;
+}
+
+.shortcut-table tr.is-flagged.is-error {
+  --row-flash: rgba(214, 69, 69, 0.3);
+}
+
+.shortcut-table tr.is-flagged.is-warning {
+  --row-flash: rgba(234, 179, 8, 0.32);
+}
+
+@keyframes shortcut-row-flash {
+  from {
+    background: var(--row-flash);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shortcut-table tr.is-flagged {
+    animation: none;
+    background: var(--row-flash);
+  }
+}
+
+.shortcut-unassigned,
+.shortcut-capturing {
+  font-size: 0.85em;
+  opacity: 0.6;
+}
+
+.shortcut-capturing {
+  color: var(--color-accent);
+  opacity: 1;
+}
+
+.shortcut-actions {
+  padding-left: 0;
+  white-space: nowrap;
+}
+
+.shortcut-action-btn {
+  font: inherit;
+  font-size: 0.78em;
+  padding: 0.2rem 0.5rem;
+  margin-left: 0.3rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.shortcut-action-btn:hover {
+  background: var(--color-muted-surface-hover);
+}
+
+.shortcut-panel-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--color-border-soft);
+  transition: border-color 0.15s ease;
+}
+
+/* One message area for two different outcomes, so the tone has to carry the
+   difference: .is-error means the assignment was refused and nothing changed,
+   .is-warning means it was accepted but comes with a caveat. */
+.shortcut-panel-message {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 0.78em;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
+.shortcut-panel-message.is-error {
+  color: var(--color-error);
+  opacity: 1;
+}
+
+.shortcut-panel-message.is-warning {
+  color: #a16207;
+  opacity: 1;
+}
+
+/* A row-scoped message is shown in its row; this copy stays in the DOM purely
+   as the aria-live region, so it must be reachable by a screen reader while
+   invisible — display:none would silence it. */
+.shortcut-panel-message.is-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+:root[data-theme="dark"] .shortcut-panel-message.is-warning {
+  color: #f1ce5e;
+}
+
+/* margin-left keeps it hard right even when the message beside it is hidden or
+   pulled out of flow by .is-visually-hidden. */
+.shortcut-reset-btn {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font: inherit;
+  font-size: 0.78em;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.shortcut-reset-btn:hover {
+  background: var(--color-muted-surface-hover);
+}

@@ -452,38 +452,140 @@ const GLOBAL_SHORTCUT_ACTIONS = {
 
 // Only shortcuts that actually work today, so this list never advertises a key
 // that does nothing.
-const SHORTCUT_SECTIONS = [
-  {
-    title: "全体",
-    note: "フォーカスがどこにあっても有効です。",
-    rows: [
-      ...GLOBAL_SHORTCUTS.map((shortcut) => ({ label: shortcut.label, combos: [shortcut.defaultCombo] })),
-      // display overrides the derived "Shift + /", since a viewer thinks of
-      // this key as "?" — the character printed on it — not as its two parts.
-      {
-        label: "ショートカット一覧を開く / 閉じる",
-        combos: [PANEL_COMBO],
-        display: ["?"],
-        note: "文字を打ち込むキーなので、コメント入力中だけは効きません。",
-      },
-    ],
-  },
-  {
-    title: "動画エリア選択中のみ",
-    note: "動画エリアをクリック、または Tab キーで選択している間だけ有効です。これらのキーは変更できません。",
-    rows: [
-      { label: "再生 / 一時停止", combos: ["Space", "Enter"] },
-      { label: "ミュート切り替え", combos: ["KeyM"] },
-      { label: "全画面表示の切り替え", combos: ["KeyF"] },
-      { label: "音量を上げる", combos: ["ArrowUp"] },
-      { label: "音量を下げる", combos: ["ArrowDown"] },
-    ],
-  },
+const PLAYER_SHORTCUTS = [
+  { label: "再生 / 一時停止", combos: ["Space", "Enter"] },
+  { label: "ミュート切り替え", combos: ["KeyM"] },
+  { label: "全画面表示の切り替え", combos: ["KeyF"] },
+  { label: "音量を上げる", combos: ["ArrowUp"] },
+  { label: "音量を下げる", combos: ["ArrowDown"] },
 ];
+
+// Combos a Global Shortcut may never take, mapped to whatever already owns
+// them. Player Shortcuts belong in here because a single press would run both
+// handlers — the Player one on #video-area, then the Global one on document as
+// the event bubbles through — clicking the same button twice and undoing
+// itself, which reads as the shortcut being broken rather than taken.
+const RESERVED_COMBOS = new Map([
+  ...PLAYER_SHORTCUTS.flatMap((shortcut) =>
+    shortcut.combos.map((combo) => [combo, `${shortcut.label}（動画エリア選択中）`]),
+  ),
+  [PANEL_COMBO, "ショートカット一覧を開く / 閉じる"],
+]);
+
+const SHORTCUT_STORAGE_KEY = "shortcuts";
+
+// A Combo carrying none of Alt/Ctrl/Meta produces a character, which means it
+// can't fire while the viewer is typing without eating the keystroke. Assigning
+// one is allowed — just warned about, in the panel and on the row itself.
+function comboTypesCharacter(combo) {
+  const modifiers = combo.split("+").slice(0, -1);
+  return !modifiers.some((modifier) => modifier === "Alt" || modifier === "Ctrl" || modifier === "Meta");
+}
+
+// The viewer's own assignments claim their Combos first; the defaults then fill
+// whatever gaps are left, and a default whose Combo is already spoken for
+// leaves that action unassigned rather than taking it back. That only matters
+// when a newly added action ships a default the viewer had already bound
+// elsewhere — and silently overwriting their own choice is the worse outcome.
+function loadShortcutAssignments() {
+  let stored = {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SHORTCUT_STORAGE_KEY) ?? "{}");
+    if (parsed && typeof parsed === "object") stored = parsed;
+  } catch {
+    // Corrupt or hand-edited: fall back to the defaults rather than break the page.
+  }
+
+  const assignments = {};
+  const taken = new Set();
+
+  for (const shortcut of GLOBAL_SHORTCUTS) {
+    if (!(shortcut.id in stored)) continue;
+    const combo = stored[shortcut.id];
+    if (combo === null) {
+      assignments[shortcut.id] = null;
+    } else if (typeof combo === "string" && combo && !RESERVED_COMBOS.has(combo) && !taken.has(combo)) {
+      assignments[shortcut.id] = combo;
+      taken.add(combo);
+    }
+  }
+
+  for (const shortcut of GLOBAL_SHORTCUTS) {
+    if (shortcut.id in assignments) continue;
+    const free = !taken.has(shortcut.defaultCombo);
+    assignments[shortcut.id] = free ? shortcut.defaultCombo : null;
+    if (free) taken.add(shortcut.defaultCombo);
+  }
+
+  return assignments;
+}
+
+const SHORTCUT_ASSIGNMENTS = loadShortcutAssignments();
+
+function saveShortcutAssignments() {
+  try {
+    localStorage.setItem(SHORTCUT_STORAGE_KEY, JSON.stringify(SHORTCUT_ASSIGNMENTS));
+  } catch {
+    // Storage blocked or full (private browsing): the change still takes effect
+    // for this session, it just won't survive a reload.
+  }
+}
+
+// What already owns this Combo, or null when it's free to take.
+function shortcutConflict(combo, exceptId) {
+  const reserved = RESERVED_COMBOS.get(combo);
+  if (reserved) return reserved;
+
+  const clash = GLOBAL_SHORTCUTS.find(
+    (shortcut) => shortcut.id !== exceptId && SHORTCUT_ASSIGNMENTS[shortcut.id] === combo,
+  );
+  return clash ? clash.label : null;
+}
+
+// Rebuilt on every render rather than held as a constant, since a row's Combo
+// and its warning both change as the viewer reassigns keys.
+function shortcutSections() {
+  return [
+    {
+      title: "全体",
+      note: "フォーカスがどこにあっても有効です。",
+      rows: [
+        ...GLOBAL_SHORTCUTS.map((shortcut) => {
+          const combo = SHORTCUT_ASSIGNMENTS[shortcut.id];
+          return {
+            id: shortcut.id,
+            label: shortcut.label,
+            combos: combo ? [combo] : [],
+            note:
+              combo && comboTypesCharacter(combo)
+                ? "Alt も Ctrl も含まないため、コメント入力中は効きません。"
+                : null,
+            editable: true,
+          };
+        }),
+        // display overrides the derived "Shift + /", since a viewer thinks of
+        // this key as "?" — the character printed on it — not as its two parts.
+        {
+          label: "ショートカット一覧を開く / 閉じる",
+          combos: [PANEL_COMBO],
+          display: ["?"],
+          note: "文字を打ち込むキーなので、コメント入力中だけは効きません。このキーは変更できません。",
+        },
+      ],
+    },
+    {
+      title: "動画エリア選択中のみ",
+      note: "動画エリアをクリック、または Tab キーで選択している間だけ有効です。これらのキーは変更できません。",
+      rows: PLAYER_SHORTCUTS,
+    },
+  ];
+}
 
 function initShortcutPanel() {
   const panel = document.getElementById("shortcut-panel");
   const body = document.getElementById("shortcut-panel-body");
+  const message = document.getElementById("shortcut-panel-message");
+  const resetButton = document.getElementById("shortcut-reset-btn");
   const openButton = document.getElementById("shortcut-help-btn");
   const closeButton = document.getElementById("shortcut-panel-close-btn");
   if (!panel || !body || !openButton) return;
@@ -497,69 +599,229 @@ function initShortcutPanel() {
     return;
   }
 
-  for (const section of SHORTCUT_SECTIONS) {
-    const sectionEl = document.createElement("section");
-    sectionEl.className = "shortcut-section";
+  // Which Global Shortcut is currently waiting for its new key, or null.
+  let capturingId = null;
 
-    const title = document.createElement("h3");
-    title.className = "shortcut-section-title";
-    title.textContent = section.title;
-    sectionEl.appendChild(title);
+  // Feedback about one row is rendered inside that row rather than down in the
+  // footer: a refusal shown a whole table's height away from the key you just
+  // pressed is easy to miss entirely. Only panel-wide messages (the reset) have
+  // no row to belong to, and those fall back to the footer.
+  let feedback = null;
 
-    if (section.note) {
-      const note = document.createElement("p");
-      note.className = "shortcut-section-note";
-      note.textContent = section.note;
-      sectionEl.appendChild(note);
-    }
+  const setFeedback = (text, tone, id = null) => {
+    feedback = text ? { text, tone, id } : null;
+  };
 
-    const table = document.createElement("table");
-    table.className = "shortcut-table";
-    const tbody = document.createElement("tbody");
+  const renderFooterMessage = () => {
+    if (!message) return;
+    message.textContent = feedback?.text ?? "";
+    message.hidden = !feedback;
+    // A row-scoped message is already visible up in its row; this copy stays
+    // only to carry the announcement, because an element inserted with its
+    // text already in place never fires aria-live.
+    message.classList.toggle("is-visually-hidden", Boolean(feedback?.id));
+    message.classList.toggle("is-error", feedback?.tone === "error");
+    message.classList.toggle("is-warning", feedback?.tone === "warning");
+  };
 
-    for (const row of section.rows) {
-      const tr = document.createElement("tr");
+  const render = () => {
+    body.textContent = "";
 
-      const th = document.createElement("th");
-      th.scope = "row";
-      th.textContent = row.label;
-      if (row.note) {
-        const note = document.createElement("small");
-        note.className = "shortcut-row-note";
-        note.textContent = row.note;
-        th.appendChild(note);
+    for (const section of shortcutSections()) {
+      const sectionEl = document.createElement("section");
+      sectionEl.className = "shortcut-section";
+
+      const title = document.createElement("h3");
+      title.className = "shortcut-section-title";
+      title.textContent = section.title;
+      sectionEl.appendChild(title);
+
+      if (section.note) {
+        const note = document.createElement("p");
+        note.className = "shortcut-section-note";
+        note.textContent = section.note;
+        sectionEl.appendChild(note);
       }
-      tr.appendChild(th);
 
-      const td = document.createElement("td");
-      row.combos.forEach((combo, index) => {
-        if (index > 0) {
-          const separator = document.createElement("span");
-          separator.className = "shortcut-combo-sep";
-          separator.textContent = "/";
-          td.appendChild(separator);
+      const table = document.createElement("table");
+      table.className = "shortcut-table";
+      const tbody = document.createElement("tbody");
+
+      for (const row of section.rows) {
+        const tr = document.createElement("tr");
+
+        const th = document.createElement("th");
+        th.scope = "row";
+        th.textContent = row.label;
+        if (row.note) {
+          const note = document.createElement("small");
+          note.className = "shortcut-row-note";
+          note.textContent = row.note;
+          th.appendChild(note);
         }
-        const key = document.createElement("kbd");
-        key.className = "shortcut-combo";
-        key.textContent = row.display?.[index] ?? formatCombo(combo);
-        td.appendChild(key);
-      });
-      tr.appendChild(td);
+        if (row.id && feedback?.id === row.id) {
+          tr.classList.add("is-flagged");
+          if (feedback.tone) tr.classList.add(`is-${feedback.tone}`);
+          const rowMessage = document.createElement("p");
+          rowMessage.className = "shortcut-row-message";
+          rowMessage.textContent = feedback.text;
+          th.appendChild(rowMessage);
+        }
+        tr.appendChild(th);
 
-      tbody.appendChild(tr);
+        const td = document.createElement("td");
+        if (row.id && row.id === capturingId) {
+          const waiting = document.createElement("span");
+          waiting.className = "shortcut-capturing";
+          waiting.textContent = "キーを押してください…";
+          td.appendChild(waiting);
+        } else if (row.combos.length === 0) {
+          const none = document.createElement("span");
+          none.className = "shortcut-unassigned";
+          none.textContent = "未割り当て";
+          td.appendChild(none);
+        } else {
+          row.combos.forEach((combo, index) => {
+            if (index > 0) {
+              const separator = document.createElement("span");
+              separator.className = "shortcut-combo-sep";
+              separator.textContent = "/";
+              td.appendChild(separator);
+            }
+            const key = document.createElement("kbd");
+            key.className = "shortcut-combo";
+            key.textContent = row.display?.[index] ?? formatCombo(combo);
+            td.appendChild(key);
+          });
+        }
+        tr.appendChild(td);
+
+        const actions = document.createElement("td");
+        actions.className = "shortcut-actions";
+        if (row.editable) {
+          const change = document.createElement("button");
+          change.type = "button";
+          change.className = "shortcut-action-btn";
+          change.textContent = capturingId === row.id ? "取消" : "変更";
+          change.addEventListener("click", () => {
+            if (capturingId === row.id) {
+              setFeedback(null);
+              stopCapture();
+            } else {
+              startCapture(row.id);
+            }
+          });
+          actions.appendChild(change);
+
+          if (row.combos.length > 0) {
+            const clear = document.createElement("button");
+            clear.type = "button";
+            clear.className = "shortcut-action-btn";
+            clear.textContent = "解除";
+            clear.addEventListener("click", () => {
+              SHORTCUT_ASSIGNMENTS[row.id] = null;
+              saveShortcutAssignments();
+              setFeedback(`「${row.label}」のキーを解除しました。`, null, row.id);
+              render();
+            });
+            actions.appendChild(clear);
+          }
+        }
+        tr.appendChild(actions);
+
+        tbody.appendChild(tr);
+      }
+
+      table.appendChild(tbody);
+      sectionEl.appendChild(table);
+      body.appendChild(sectionEl);
     }
 
-    table.appendChild(tbody);
-    sectionEl.appendChild(table);
-    body.appendChild(sectionEl);
+    renderFooterMessage();
+  };
+
+  // Bound on window in the capture phase, so it runs ahead of both the Global
+  // Shortcut listener on document and the browser's own Alt accelerators —
+  // otherwise pressing Alt+D to assign it would focus the address bar instead.
+  const onCaptureKey = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // A modifier on its own is the viewer still reaching for the combination.
+    if (/^(Alt|Control|Shift|Meta)(Left|Right)$/.test(event.code)) return;
+
+    const id = capturingId;
+
+    if (event.code === "Escape") {
+      setFeedback("変更を取り消しました。", null, id);
+      stopCapture();
+      return;
+    }
+
+    const combo = comboFromEvent(event);
+    const owner = shortcutConflict(combo, id);
+
+    if (owner) {
+      setFeedback(`${formatCombo(combo)} は「${owner}」に割り当て済みです。変更していません。`, "error", id);
+      stopCapture();
+      return;
+    }
+
+    SHORTCUT_ASSIGNMENTS[id] = combo;
+    saveShortcutAssignments();
+    // A refusal and a merely-inadvisable choice both land here, so the tone has
+    // to carry the difference: one says nothing changed, the other says it did.
+    setFeedback(
+      comboTypesCharacter(combo)
+        ? `${formatCombo(combo)} にしました。Alt か Ctrl を含めないと、コメント入力中は効きません。`
+        : `${formatCombo(combo)} にしました。`,
+      comboTypesCharacter(combo) ? "warning" : null,
+      id,
+    );
+    stopCapture();
+  };
+
+  function startCapture(id) {
+    capturingId = id;
+    setFeedback("Esc で取り消します。", null, id);
+    window.addEventListener("keydown", onCaptureKey, true);
+    render();
+  }
+
+  function stopCapture() {
+    capturingId = null;
+    window.removeEventListener("keydown", onCaptureKey, true);
+    render();
   }
 
   const open = () => {
-    if (!panel.open) panel.showModal();
+    if (!panel.open) {
+      setFeedback(null);
+      render();
+      panel.showModal();
+    }
   };
   const close = () => {
-    if (panel.open) panel.close();
+    if (!panel.open) return;
+    if (capturingId) stopCapture();
+    panel.close();
   };
+
+  // Esc during a capture cancels the capture, not the whole panel. The capture
+  // listener above already swallows that keydown, but a <dialog> can also be
+  // dismissed by the UA without one, so the cancel event is guarded too.
+  panel.addEventListener("cancel", (event) => {
+    if (capturingId) event.preventDefault();
+  });
+
+  resetButton?.addEventListener("click", () => {
+    for (const shortcut of GLOBAL_SHORTCUTS) SHORTCUT_ASSIGNMENTS[shortcut.id] = shortcut.defaultCombo;
+    saveShortcutAssignments();
+    setFeedback("すべてデフォルトに戻しました。", null);
+    render();
+  });
+
+  render();
 
   openButton.addEventListener("click", () => (panel.open ? close() : open()));
   closeButton?.addEventListener("click", close);
@@ -588,7 +850,7 @@ function initShortcutPanel() {
 function initGlobalShortcuts() {
   document.addEventListener("keydown", (event) => {
     const combo = comboFromEvent(event);
-    const shortcut = GLOBAL_SHORTCUTS.find((candidate) => candidate.defaultCombo === combo);
+    const shortcut = GLOBAL_SHORTCUTS.find((candidate) => SHORTCUT_ASSIGNMENTS[candidate.id] === combo);
     if (!shortcut) return;
     event.preventDefault();
     GLOBAL_SHORTCUT_ACTIONS[shortcut.id]?.();
